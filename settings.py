@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 
+
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -27,3 +28,4 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 VECTOR_TOP_K = 5
 MIN_SCORE = 0.4
 RERANK_TOP_K = 3
+LOGIN_SESSION_TTL_SECONDS = 60 * 60

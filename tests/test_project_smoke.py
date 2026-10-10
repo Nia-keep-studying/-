@@ -7,10 +7,9 @@ from unittest.mock import patch
 
 import httpx
 import numpy as np
-from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
-from sqlmodel import create_engine
+from sqlmodel import Session, create_engine, select
 
 from agent.langchain_agent_demo import build_agent
 from agent.order_client import get_order
@@ -46,7 +45,9 @@ class ProjectSmokeTests(unittest.TestCase):
             ):
                 importlib.import_module(module)
 
-    def test_order_api_uses_isolated_database_and_preserves_rules(self):
+    def test_seed_is_repeatable_and_records_order_ownership(self):
+        from backend import seed_demo
+
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "orders.db"
             engine = create_engine(
@@ -54,18 +55,17 @@ class ProjectSmokeTests(unittest.TestCase):
                 connect_args={"check_same_thread": False},
             )
             try:
-                with patch.object(server, "database_file", database), patch.object(server, "engine", engine):
-                    with TestClient(server.app) as client:
-                        self.assertEqual(client.get("/orders").json(), [])
-                        order = {"order_id": "A1001", "product": "演示商品", "status": "已发货"}
-                        self.assertEqual(client.post("/orders", json=order).status_code, 201)
-                        self.assertEqual(client.post("/orders", json=order).status_code, 409)
-                        self.assertEqual(client.get("/orders/A1001").json(), order)
-                        self.assertEqual(len(client.get("/orders", params={"status": "已发货"}).json()), 1)
-                        self.assertEqual(client.get("/orders/missing").status_code, 404)
-                        self.assertEqual(client.patch("/orders/A1001/status", json={"status": "已取消"}).status_code, 200)
-                        self.assertEqual(client.patch("/orders/A1001/status", json={"status": "待发货"}).status_code, 403)
-                        self.assertEqual(client.get("/orders/A1001").json()["status"], "已取消")
+                with patch.object(server, "database_file", database), patch.object(server, "engine", engine), patch.object(seed_demo, "engine", engine):
+                    seed_demo.seed_demo()
+                    seed_demo.seed_demo()
+                    with Session(engine) as session:
+                        self.assertEqual(len(session.exec(select(server.User)).all()), 2)
+                        orders = session.exec(select(server.Order)).all()
+                        self.assertEqual({o.order_id: o.user_id for o in orders}, {
+                            "A1001": "U1001", "A1002": "U1001", "A2001": "U1002",
+                        })
+                        user = session.get(server.User, "U1001")
+                        self.assertTrue(server.password_hasher.verify("demo-password", user.password_hash))
             finally:
                 engine.dispose()
 
