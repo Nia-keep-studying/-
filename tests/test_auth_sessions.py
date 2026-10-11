@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, create_engine, select
 
 from backend import sqlmodel_server as server
+from agent import order_client
+import httpx
 
 
 class AuthSessionTests(unittest.TestCase):
@@ -110,3 +112,44 @@ class AuthSessionTests(unittest.TestCase):
             self.assertEqual(self.client.get("/orders", headers=self.headers(token)).status_code, 401)
         with Session(self.engine) as session:
             self.assertIsNotNone(session.get(server.LoginSession, token_hash))
+
+    def test_customer_api_exposes_only_auth_and_order_reads(self):
+        operations = {
+            (method.upper(), path)
+            for path, item in self.client.get("/openapi.json").json()["paths"].items()
+            for method in item if method in {"get", "post", "put", "patch", "delete"}
+        }
+        self.assertEqual(operations, {
+            ("POST", "/login"), ("GET", "/me"), ("POST", "/logout"),
+            ("GET", "/orders"), ("GET", "/orders/{order_id}"),
+        })
+
+    def test_http_client_credentials_filters_and_empty_results(self):
+        def local_request(method):
+            def send(url, **kwargs):
+                kwargs.pop("timeout", None)
+                return getattr(self.client, method)(url, **kwargs)
+            return send
+
+        with patch.object(order_client.httpx, "post", side_effect=local_request("post")), patch.object(order_client.httpx, "get", side_effect=local_request("get")):
+            token = order_client.login("alice", "auth-test-password")["access_token"]
+            self.assertTrue(order_client.is_logged_in(token))
+            self.assertFalse(order_client.is_logged_in("invalid-test-token"))
+            self.assertEqual(order_client.get_order("A1001", token)["user_id"], "U1001")
+            self.assertIn("error", order_client.get_order("A2001", token))
+            self.assertEqual([o["order_id"] for o in order_client.get_order_list(token, product_keyword="手机")], ["A1002"])
+            self.assertEqual([o["order_id"] for o in order_client.get_order_list(token, status="已发货")], ["A1001"])
+            self.assertEqual(len(order_client.get_order_list(token, offset=1, limit=1)), 1)
+            self.assertEqual(order_client.get_order_list(token, product_keyword="不存在的商品"), [])
+            self.assertEqual(order_client.get_order_list("invalid-test-token")["code"], "unauthenticated")
+            self.client.post("/logout", headers=self.headers(token))
+            self.assertFalse(order_client.is_logged_in(token))
+
+    def test_login_check_keeps_service_failure_distinct_from_expiration(self):
+        request = httpx.Request("GET", "http://example.test/me")
+        with patch.object(order_client.httpx, "get", side_effect=httpx.ConnectError("simulated")):
+            with self.assertRaises(httpx.HTTPError):
+                order_client.is_logged_in("test-token")
+        with patch.object(order_client.httpx, "get", return_value=httpx.Response(503, request=request)):
+            with self.assertRaises(httpx.HTTPStatusError):
+                order_client.is_logged_in("test-token")

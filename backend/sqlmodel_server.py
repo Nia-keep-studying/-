@@ -34,18 +34,6 @@ class LoginRequest(SQLModel):
     username:str
     password:str
 
-class OrderStatusUpdate(SQLModel):
-    status:OrderStatus
-
-class OrderUpdate(SQLModel):
-    product:str
-    status:OrderStatus
-
-
-class OrderCreate(SQLModel):
-    order_id:str
-    product:str
-    status:OrderStatus
 
 class Order(SQLModel,table=True):
     __tablename__ = "orders"
@@ -100,19 +88,6 @@ def get_current_user(
 
     return user
 
-
-def can_status_change(old_status:str,new_status:OrderStatus)->bool:
-    return not(old_status == "已取消" and new_status != "已取消")
-
-def add_order(order_data: OrderCreate,session:Session):
-    order = Order(**order_data.model_dump())
-
-
-    session.add(order)
-    session.commit()
-    session.refresh(order)
-    return order
-
 def get_orders(
         session:Session,
         user_id:str,
@@ -134,49 +109,6 @@ def get_orders(
     orders = session.exec(statement).all()
 
     return orders
-
-def update_order_status(order_id:str,new_status:OrderStatus,session:Session):
-
-    order = session.get(Order,order_id)
-    if order is None:
-        return None
-    if can_status_change(old_status=order.status,new_status=new_status) == False:
-        return False
-    order.status = new_status
-    session.add(order)
-    session.commit()
-    session.refresh(order)
-    return order
-
-
-def get_order_by_id(order_id:str,session:Session):
-
-    statement = select(Order).where(Order.order_id == order_id)
-    order = session.exec(statement).first()
-    return order
-
-def delete_order(order_id:str,session:Session) -> bool:
-
-    order = session.get(Order, order_id)
-    if order is None:
-        return False
-    session.delete(order)
-    session.commit()
-    return True
-
-def order_update(order_id:str,update_data:OrderUpdate,session:Session):
-    order = session.get(Order,order_id)
-    if order is None:
-        return None
-    if can_status_change(old_status=order.status,new_status=update_data.status) == False:
-        return False
-    order.product = update_data.product
-    order.status = update_data.status
-
-    session.commit()
-    session.refresh(order)
-    return order
-
 
 @app.post("/login")
 def login(login_data:LoginRequest,session:Session=Depends(get_session),):
@@ -251,42 +183,3 @@ def read_order(order_id:str,session:Session = Depends(get_session),current_user:
     if order is None:
         raise HTTPException(status_code=404, detail="订单未找到")
     return order
-
-@app.post("/orders",status_code = 201)
-def create_order(new_order:OrderCreate,session:Session = Depends(get_session)):
-    existing_order = get_order_by_id(new_order.order_id,session=session)
-    if existing_order is not None:
-        raise HTTPException(status_code=409, detail="订单ID已存在")
-
-    order = add_order(new_order,session=session)
-    return order
-
-@app.patch("/orders/{order_id}/status")
-def change_order_status(order_id:str,update_data:OrderStatusUpdate,session:Session = Depends(get_session)):
-
-    order = update_order_status(order_id,new_status=update_data.status,session=session)
-    if order is None:
-        raise HTTPException(status_code=404,detail="订单未找到")
-    if order == False:
-        raise HTTPException(status_code=403,detail="无法修改已取消的订单状态")
-    return order
-
-@app.delete("/orders/{order_id}",status_code=204)
-def remove_order(order_id:str,session:Session = Depends(get_session)):
-    deleted = delete_order(order_id,session=session)
-    if deleted is False:
-        raise HTTPException(status_code=404,detail="订单未找到")
-    return Response(status_code=204)
-
-@app.put("/orders/{order_id}")
-def update_order(order_id:str,update_data:OrderUpdate,session:Session = Depends(get_session)):
-    order = session.get(Order,order_id)
-    if order is None:
-        raise HTTPException(status_code=404,detail="没找到订单")
-    updated = order_update(order_id=order_id,update_data=update_data,session=session)
-    if updated is None:
-        raise HTTPException(status_code=404,detail="没有找到对应订单")
-    elif updated == False:
-        raise HTTPException(status_code=403,detail="无法更改已经取消的订单")
-
-    return updated
