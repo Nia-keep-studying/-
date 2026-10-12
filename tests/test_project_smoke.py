@@ -41,7 +41,7 @@ class ProjectSmokeTests(unittest.TestCase):
         with patch("builtins.input", side_effect=AssertionError("Import requested input")):
             for module in (
                 "settings", "backend.sqlmodel_server", "agent.order_client",
-                "agent.langchain_agent_demo", "rag.rag_loader", "rag.rag_search",
+                "agent.langchain_agent_demo", "agent.business_entry", "rag.rag_loader", "rag.rag_search",
                 "rag.embedding_demo", "rag.rerank_demo", "rag.policy_search",
                 "rag.eval_retrieval",
             ):

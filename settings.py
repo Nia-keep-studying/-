@@ -22,6 +22,9 @@ MODEL_CACHE_DIR = project_path(
 os.environ["HF_HOME"] = str(MODEL_CACHE_DIR)
 
 ORDER_API_BASE_URL = os.getenv("ORDER_API_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
+RETURN_APPLICATION_URL = (
+    f"{ORDER_API_BASE_URL}/demo/return-application"
+)
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 
 # Existing experimental settings, not universally optimal thresholds.

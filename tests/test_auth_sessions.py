@@ -10,6 +10,9 @@ from sqlmodel import Session, create_engine, select
 
 from backend import sqlmodel_server as server
 from agent import order_client
+from agent.business_entry import get_return_entry
+from urllib.parse import urlsplit, parse_qs
+from settings import RETURN_APPLICATION_URL
 import httpx
 
 
@@ -153,3 +156,29 @@ class AuthSessionTests(unittest.TestCase):
         with patch.object(order_client.httpx, "get", return_value=httpx.Response(503, request=request)):
             with self.assertRaises(httpx.HTTPStatusError):
                 order_client.is_logged_in("test-token")
+
+    def test_return_entry_preparation_checks_owner_status_and_preserves_auth_error(self):
+        def local_get(url, **kwargs):
+            kwargs.pop("timeout", None)
+            return self.client.get(url, **kwargs)
+
+        token = self.login()
+        with patch.object(order_client.httpx, "get", side_effect=local_get):
+            entry = get_return_entry("A1001", token)
+            self.assertEqual(entry["order_id"], "A1001")
+            self.assertTrue(entry["is_demo"])
+            parsed = urlsplit(entry["entry_url"])
+            base = urlsplit(RETURN_APPLICATION_URL)
+            self.assertEqual((parsed.scheme, parsed.netloc, parsed.path), (base.scheme, base.netloc, base.path))
+            self.assertEqual(parse_qs(parsed.query), {"order_id": ["A1001"]})
+            self.assertNotIn(token, entry["entry_url"])
+            self.assertIn("不表示申请已提交或退款已批准", entry["message"])
+            denied = get_return_entry("A2001", token)
+            self.assertIn("error", denied)
+            self.assertNotIn("entry_url", denied)
+            pending = get_return_entry("A1002", token)
+            self.assertEqual(pending["code"], "unsupported_status")
+            self.assertNotIn("entry_url", pending)
+            invalid = get_return_entry("A1001", "invalid-test-token")
+            self.assertEqual(invalid["code"], "unauthenticated")
+            self.assertNotIn("entry_url", invalid)
