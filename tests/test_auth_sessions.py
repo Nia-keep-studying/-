@@ -116,7 +116,7 @@ class AuthSessionTests(unittest.TestCase):
         with Session(self.engine) as session:
             self.assertIsNotNone(session.get(server.LoginSession, token_hash))
 
-    def test_customer_api_exposes_only_auth_and_order_reads(self):
+    def test_customer_api_has_no_order_writes(self):
         operations = {
             (method.upper(), path)
             for path, item in self.client.get("/openapi.json").json()["paths"].items()
@@ -125,7 +125,71 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual(operations, {
             ("POST", "/login"), ("GET", "/me"), ("POST", "/logout"),
             ("GET", "/orders"), ("GET", "/orders/{order_id}"),
+            ("POST", "/human-tickets"),
         })
+
+    def ticket_payload(self, **changes):
+        payload = {"summary": "订单售后条件无法确认", "reason": "用户要求人工",
+                   "conversation_id": "offline-thread"}
+        payload.update(changes)
+        return payload
+
+    def test_ticket_without_order_is_saved(self):
+        response = self.client.post("/human-tickets", headers=self.headers(self.login()),
+                                    json=self.ticket_payload())
+        self.assertEqual(response.status_code, 201, response.text)
+        with Session(self.engine) as session:
+            ticket = session.get(server.HumanTicket, response.json()["ticket_id"])
+            self.assertIsNone(ticket.order_id)
+            self.assertEqual(ticket.user_id, "U1001")
+            self.assertEqual(ticket.status, "待处理")
+
+    def test_ticket_uses_authenticated_owner_and_server_status(self):
+        response = self.client.post("/human-tickets", headers=self.headers(self.login()),
+            json=self.ticket_payload(order_id="A1001", user_id="U1002", status="已完成",
+                                     policy_reference="退款与取消规则 / 发货后退款"))
+        self.assertEqual(response.status_code, 201, response.text)
+        with Session(self.engine) as session:
+            ticket = session.get(server.HumanTicket, response.json()["ticket_id"])
+            self.assertEqual((ticket.user_id, ticket.order_id, ticket.status),
+                             ("U1001", "A1001", "待处理"))
+            self.assertEqual(ticket.conversation_id, "offline-thread")
+            self.assertEqual(ticket.summary, "订单售后条件无法确认")
+            self.assertGreater(ticket.created_at, 0)
+        self.assertIn("尚无真实客服接入", response.json()["message"])
+
+    def test_ticket_rejection_never_inserts_a_record(self):
+        headers = self.headers(self.login())
+        cases = [({}, self.ticket_payload(), 401),
+                 (headers, self.ticket_payload(order_id="A2001"), 404),
+                 (headers, self.ticket_payload(order_id="missing"), 404),
+                 (headers, self.ticket_payload(summary=""), 422)]
+        for auth, body, code in cases:
+            with self.subTest(code=code, order=body.get("order_id")):
+                self.assertEqual(self.client.post("/human-tickets", headers=auth,
+                                                  json=body).status_code, code)
+        with Session(self.engine) as session:
+            self.assertEqual(session.exec(select(server.HumanTicket)).all(), [])
+
+    def test_expired_session_cannot_create_ticket(self):
+        token = self.login()
+        with Session(self.engine) as session:
+            record = session.get(server.LoginSession, hashlib.sha256(token.encode()).hexdigest())
+            record.expires_at = 0
+            session.add(record)
+            session.commit()
+        self.assertEqual(self.client.post("/human-tickets", headers=self.headers(token),
+                                         json=self.ticket_payload()).status_code, 401)
+        with Session(self.engine) as session:
+            self.assertEqual(session.exec(select(server.HumanTicket)).all(), [])
+
+    def test_return_page_is_public_shell_with_protected_order_data(self):
+        response = self.client.get("/demo/return-application?order_id=A1001")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertNotIn("A1001", response.text)
+        self.assertEqual(self.client.get("/orders/A1001").status_code, 401)
 
     def test_http_client_credentials_filters_and_empty_results(self):
         def local_request(method):

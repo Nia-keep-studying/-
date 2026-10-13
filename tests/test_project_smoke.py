@@ -153,11 +153,12 @@ class ProjectSmokeTests(unittest.TestCase):
             access_token=token, status="已发货", product_keyword="手机", offset=0, limit=10,
         )
         tools = {tool.name: tool for tool in registered}
-        self.assertEqual(set(tools), {"query_order", "query_orders", "search_policy"})
+        self.assertEqual(set(tools), {"query_order", "query_orders", "search_policy", "query_return_entry"})
         self.assertEqual(set(tools["query_orders"].get_input_schema().model_json_schema()["properties"]), {
             "status", "product_keyword", "offset", "limit",
         })
         self.assertEqual(set(tools["query_order"].get_input_schema().model_json_schema()["properties"]), {"order_id"})
+        self.assertEqual(set(tools["query_return_entry"].get_input_schema().model_json_schema()["properties"]), {"order_id"})
         messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         self.assertEqual(messages[0].tool_call_id, "list-call-1")
         self.assertIn("A1002", messages[0].content)

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>退货申请入口演示</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #172b3a; background: #f3f6f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 20px; }
+    main { max-width: 700px; margin: auto; }
+    h1 { font-size: 28px; margin: 8px 0 16px; }
+    h2 { font-size: 19px; margin-top: 0; }
+    p, li { line-height: 1.75; }
+    .muted { color: #536677; }
+    .tag { font-size: 13px; font-weight: 700; color: #256a69; }
+    section { margin-top: 20px; padding: 24px; background: white; border: 1px solid #dbe3e9; border-radius: 12px; }
+    label { display: block; margin-top: 14px; font-size: 14px; }
+    input { width: 100%; padding: 11px 12px; margin-top: 6px; font: inherit; border: 1px solid #9baab7; border-radius: 6px; }
+    button { padding: 11px 16px; margin: 16px 8px 0 0; font: inherit; cursor: pointer; border: 0; border-radius: 6px; background: #24696b; color: white; }
+    button.secondary { color: #172b3a; background: #e9eef2; }
+    button:disabled { opacity: .55; cursor: wait; }
+    input:focus-visible, button:focus-visible { outline: 3px solid #74b9b9; outline-offset: 2px; }
+    #feedback { min-height: 28px; margin: 18px 0; }
+    #feedback.error { color: #a02b37; }
+    dl { display: grid; grid-template-columns: 90px 1fr; gap: 12px; margin-bottom: 0; }
+    dt { color: #536677; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="tag">顾客售后助手 · 演示页面</div>
+  <h1>退货申请入口</h1>
+  <p class="muted">登录后查看这笔订单及办理说明。本页只展示演示流程，不提交退货申请，不执行退款。</p>
+  <section id="login-section">
+    <h2>登录查看本人订单</h2>
+    <p class="muted">请使用订单所属账号登录。终端中的登录状态不会自动传入此页面。</p>
+    <form id="login-form">
+      <label for="username">用户名</label>
+      <input id="username" name="username" autocomplete="username" required>
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button id="login-button" type="submit">登录并查看订单</button>
+    </form>
+  </section>
+  <section id="account-section" hidden>
+    <h2 id="account-name">当前账号</h2>
+    <p class="muted">凭证只保存在当前页面内存中，刷新页面需要重新登录。</p>
+    <button id="refresh-button" type="button">重新查询订单</button>
+    <button id="logout-button" type="button" class="secondary">退出登录</button>
+  </section>
+  <p id="feedback" role="status" aria-live="polite">请先登录。订单详情由后端核验身份后提供。</p>
+  <section id="order-section" hidden>
+    <h2>订单信息</h2>
+    <dl>
+      <dt>订单编号</dt><dd id="order-id"></dd>
+      <dt>商品</dt><dd id="order-product"></dd>
+      <dt>当前状态</dt><dd id="order-status"></dd>
+    </dl>
+  </section>
+  <section id="instructions" hidden>
+    <h2>办理说明</h2>
+    <p>已发货状态不代表退款已获批准。是否签收、申请期限及其他售后条件仍需确认，具体处理以适用制度和业务系统审核为准。</p>
+    <p>当前演示仅展示入口和本人订单。这里没有提交按钮，也没有创建退货、退款或资金记录。</p>
+  </section>
+</main>
+<script>
+  "use strict";
+  const orderId = new URLSearchParams(window.location.search).get("order_id");
+  const element = (id) => document.getElementById(id);
+  let accessToken = "";
+
+  function feedback(text, error = false) {
+    element("feedback").textContent = text;
+    element("feedback").classList.toggle("error", error);
+  }
+
+  function clearOrder() {
+    element("order-section").hidden = true;
+    element("instructions").hidden = true;
+    for (const id of ["order-id", "order-product", "order-status"]) {
+      element(id).textContent = "";
+    }
+  }
+
+  function clearLogin() {
+    accessToken = "";
+    clearOrder();
+    element("password").value = "";
+    element("account-name").textContent = "当前账号";
+    element("account-section").hidden = true;
+    element("login-section").hidden = false;
+  }
+
+  function busy(value) {
+    for (const id of ["login-button", "refresh-button", "logout-button"]) {
+      element(id).disabled = value;
+    }
+  }
+
+  async function loadOrder() {
+    clearOrder();
+    if (!orderId) {
+      feedback("链接缺少订单编号，请返回助手取得完整入口。", true);
+      return;
+    }
+    feedback("正在验证权限并查询订单……");
+    const response = await fetch(`/orders/${encodeURIComponent(orderId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (response.status === 401) {
+      clearLogin();
+      feedback("登录已失效，请重新登录。", true);
+      return;
+    }
+    if (response.status === 404) {
+      feedback("未找到可访问的订单，请核对账号和订单编号。", true);
+      return;
+    }
+    if (!response.ok) {
+      feedback("订单服务暂时无法完成查询，请稍后重试。", true);
+      return;
+    }
+    const order = await response.json();
+    element("order-id").textContent = order.order_id;
+    element("order-product").textContent = order.product;
+    element("order-status").textContent = order.status;
+    element("order-section").hidden = false;
+    if (order.status !== "已发货") {
+      feedback("当前演示入口暂只支持已发货订单，请按对应状态的制度处理。", true);
+      return;
+    }
+    element("instructions").hidden = false;
+    feedback("已查询到本人订单。本页尚未提交任何申请。");
+  }
+
+  element("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = element("username").value.trim();
+    const password = element("password").value;
+    clearLogin();
+    if (!orderId) {
+      feedback("链接缺少订单编号，请返回助手取得完整入口。", true);
+      return;
+    }
+    // Credentials stay in the request body; the page stores only the returned token.
+    busy(true);
+    try {
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+        cache: "no-store",
+      });
+      element("password").value = "";
+      if (response.status === 401) {
+        feedback("用户名或密码错误，请重新输入。", true);
+        return;
+      }
+      if (!response.ok) {
+        feedback("暂时无法登录，请检查输入或稍后重试。", true);
+        return;
+      }
+      const login = await response.json();
+      accessToken = login.access_token;
+      element("account-name").textContent = `已登录：${login.username}`;
+      element("login-section").hidden = true;
+      element("account-section").hidden = false;
+      await loadOrder();
+    } catch (error) {
+      clearOrder();
+      feedback("网络或响应异常，请稍后重试。", true);
+    } finally {
+      element("password").value = "";
+      busy(false);
+    }
+  });
+
+  element("refresh-button").addEventListener("click", async () => {
+    busy(true);
+    try {
+      await loadOrder();
+    } catch (error) {
+      clearOrder();
+      feedback("暂时无法查询订单，请稍后重试。", true);
+    } finally {
+      busy(false);
+    }
+  });
+
+  element("logout-button").addEventListener("click", async () => {
+    busy(true);
+    try {
+      const response = await fetch("/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (response.ok || response.status === 401) {
+        clearLogin();
+        feedback("已退出当前页面的登录，请重新登录后查询。");
+      } else {
+        feedback("退出未成功，请稍后重试。", true);
+      }
+    } catch (error) {
+      feedback("暂时无法退出登录，请稍后重试。", true);
+    } finally {
+      busy(false);
+    }
+  });
+
+  if (!orderId) {
+    feedback("链接缺少订单编号，请返回助手取得完整入口。", true);
+  }
+</script>
+</body>
+</html>

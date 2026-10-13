@@ -1,10 +1,12 @@
 from sqlmodel import SQLModel, Field,create_engine,Session,select
-from settings import DATABASE_PATH,LOGIN_SESSION_TTL_SECONDS
+from settings import DATABASE_PATH,LOGIN_SESSION_TTL_SECONDS,PROJECT_ROOT
 from fastapi import FastAPI,HTTPException,Query,Response,Depends
 from typing import Literal
 from contextlib import asynccontextmanager
 from pwdlib import PasswordHash
 from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse
+from uuid import uuid4
 
 import secrets
 import hashlib
@@ -42,6 +44,34 @@ class Order(SQLModel,table=True):
     user_id:str=Field(foreign_key="users.user_id",index=True)
     product:str
     status:str
+
+class HumanTicket(SQLModel,table=True):
+    __tablename__ = "human_tickets"
+
+    ticket_id:str=Field(primary_key=True)
+    user_id:str=Field(foreign_key="users.user_id",index=True)
+    order_id:str|None = Field(
+        default=None,
+        foreign_key="orders.order_id",
+        index=True,
+    )
+
+    summary:str
+    reason:str
+    policy_reference:str|None = None
+    conversation_id:str
+    created_at:int
+    status:str = "待处理"
+
+class HumanTicketCreate(SQLModel):
+    order_id:str|None = None
+    summary:str=Field(min_length=1,max_length=2000)
+    reason:str=Field(min_length=1,max_length=500)
+    policy_reference:str|None=Field(
+        default=None,
+        max_length=2000,
+    )
+    conversation_id:str=Field(min_length=1,max_length=100)
 
 database_file = DATABASE_PATH
 database_url = f"sqlite:///{database_file.as_posix()}"
@@ -183,3 +213,54 @@ def read_order(order_id:str,session:Session = Depends(get_session),current_user:
     if order is None:
         raise HTTPException(status_code=404, detail="订单未找到")
     return order
+
+@app.get("/demo/return-application",response_class=FileResponse,include_in_schema=False)
+def return_application_page():
+    return FileResponse(
+        path=PROJECT_ROOT / "web" / "return_application.html",
+        media_type="text/html",
+        headers={"Cache-Control":"no-store"}
+    )
+
+@app.post("/human-tickets",status_code=201)
+def create_human_ticket(
+    ticket_data:HumanTicketCreate,
+    current_user:User=Depends(get_current_user),
+    session:Session=Depends(get_session),
+):
+    if ticket_data.order_id is not None:
+        statement = select(Order).where(
+            Order.order_id==ticket_data.order_id,
+            Order.user_id==current_user.user_id,
+        )
+        order = session.exec(statement=statement).first()
+
+        if order is None:
+            raise HTTPException(
+                status_code=404,
+                detail="未找到可关联订单",
+            )
+
+    ticket = HumanTicket(
+        ticket_id=str(uuid4()),
+        user_id=current_user.user_id,
+        order_id=ticket_data.order_id,
+        summary=ticket_data.summary,
+        reason=ticket_data.reason,
+        policy_reference=ticket_data.policy_reference,
+        conversation_id=ticket_data.conversation_id,
+        created_at=int(time.time()),
+        status="待处理"
+    )
+
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+
+    return {
+        "ticket_id":ticket.ticket_id,
+        "order_id":ticket.order_id,
+        "summary":ticket.summary,
+        "status":ticket.status,
+        "message":"工单已保存，状态为待处理。当前为演示流程，尚无真实客服接入。"
+    }
