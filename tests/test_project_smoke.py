@@ -4,10 +4,12 @@ from contextlib import ExitStack
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import httpx
 import numpy as np
+from openai import APITimeoutError, APIStatusError
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from sqlmodel import Session, create_engine, select
@@ -153,7 +155,7 @@ class ProjectSmokeTests(unittest.TestCase):
             access_token=token, status="已发货", product_keyword="手机", offset=0, limit=10,
         )
         tools = {tool.name: tool for tool in registered}
-        self.assertEqual(set(tools), {"query_order", "query_orders", "search_policy", "query_return_entry"})
+        self.assertEqual(set(tools), {"query_order", "query_orders", "search_policy", "query_return_entry", "create_support_ticket"})
         self.assertEqual(set(tools["query_orders"].get_input_schema().model_json_schema()["properties"]), {
             "status", "product_keyword", "offset", "limit",
         })
@@ -184,6 +186,84 @@ class ProjectSmokeTests(unittest.TestCase):
                 fake_agent.invoke.assert_not_called()
                 self.assertEqual(validation.call_count, len(checks))
                 output.assert_any_call("登录已失效，请重新运行程序并登录")
+
+    def test_chat_request_errors_switch_thread_and_do_not_retry_question(self):
+        request = httpx.Request("POST", "http://example.test/api")
+        errors = [
+            httpx.ReadTimeout("simulated timeout", request=request),
+            httpx.HTTPStatusError("simulated status", request=request,
+                                  response=httpx.Response(503, request=request)),
+            APITimeoutError(request=request),
+            APIStatusError("simulated model status", response=httpx.Response(429, request=request), body=None),
+        ]
+        for error in errors:
+            with self.subTest(error=type(error).__name__), ExitStack() as stack:
+                stack.enter_context(patch.dict("os.environ", {"DEEPSEEK_API_KEY": "offline-test-key"}))
+                stack.enter_context(patch("builtins.input", side_effect=["alice", "创建工单", "你好", "q"]))
+                output = stack.enter_context(patch("builtins.print"))
+                stack.enter_context(patch.object(agent_app, "getpass", return_value="test-password"))
+                stack.enter_context(patch.object(agent_app, "login", return_value={"access_token": "private-test-token", "username": "alice"}))
+                stack.enter_context(patch.object(agent_app, "is_logged_in", return_value=True))
+                stack.enter_context(patch.object(agent_app, "uuid4", side_effect=["failed-thread", "fresh-thread"]))
+                timer = stack.enter_context(patch.object(agent_app, "perf_counter", side_effect=[10.0, 12.5, 20.0, 23.0]))
+                for name in ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]:
+                    stack.enter_context(patch.object(agent_app, name))
+                calls = []
+
+                def invoke(data, config):
+                    calls.append((data["messages"][0]["content"], config["configurable"]["thread_id"]))
+                    if len(calls) == 1:
+                        raise error
+                    return {"messages": [AIMessage(content="恢复后的回答")]}
+
+                fake_agent = Mock()
+                fake_agent.get_state.return_value = SimpleNamespace(values={"messages": []})
+                fake_agent.invoke.side_effect = invoke
+                stack.enter_context(patch.object(agent_app, "build_agent", return_value=fake_agent))
+                agent_app.main()
+                self.assertEqual(calls, [("创建工单", "failed-thread"), ("你好", "fresh-thread")])
+                output.assert_any_call("本轮请求未能正常完成，异常类型：", type(error).__name__)
+                output.assert_any_call("已切换到新会话，编号：", "fresh-thread")
+                output.assert_any_call("如果涉及工单创建，请先核对保存结果，再决定是否重新提交。")
+                output.assert_any_call("本轮Agent执行耗时：2.50秒")
+                output.assert_any_call("本轮Agent执行耗时：3.00秒")
+                self.assertEqual(timer.call_count, 4)
+                answers = [c for c in output.call_args_list if c.args[0] == "最终回答："]
+                self.assertEqual(len(answers), 1)
+                self.assertEqual(answers[0].args[1], "恢复后的回答")
+                self.assertNotIn("private-test-token", str(output.call_args_list))
+
+    def test_login_loop_retries_before_initialization_and_returns_on_quit(self):
+        request = httpx.Request("POST", "http://example.test/login")
+        error = httpx.HTTPStatusError("wrong password", request=request,
+                                     response=httpx.Response(401, request=request))
+        cases = [
+            (["alice", "alice", "q"], ["wrong", "correct"],
+             [error, {"access_token": "private-test-token", "username": "alice"}], 2, 1),
+            ([" Q "], [], [], 0, 0),
+            (["alice"], ["q"], [], 0, 0),
+        ]
+        for questions, passwords, responses, attempts, initializations in cases:
+            with self.subTest(attempts=attempts, questions=questions), ExitStack() as stack:
+                stack.enter_context(patch.dict("os.environ", {"DEEPSEEK_API_KEY": "offline-test-key"}))
+                stack.enter_context(patch("builtins.input", side_effect=questions))
+                output = stack.enter_context(patch("builtins.print"))
+                password_input = stack.enter_context(patch.object(agent_app, "getpass", side_effect=passwords))
+                login = stack.enter_context(patch.object(agent_app, "login", side_effect=responses))
+                resources = [stack.enter_context(patch.object(agent_app, name)) for name in
+                             ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]]
+                fake = Mock()
+                build = stack.enter_context(patch.object(agent_app, "build_agent", return_value=fake))
+                agent_app.main()
+                self.assertEqual(login.call_count, attempts)
+                self.assertEqual(password_input.call_count, len(passwords))
+                self.assertEqual(build.call_count, initializations)
+                self.assertTrue(all(resource.call_count == initializations for resource in resources))
+                fake.invoke.assert_not_called()
+                if initializations:
+                    self.assertEqual(build.call_args.args[-1], "private-test-token")
+                    output.assert_any_call("已登录：", "alice")
+                self.assertNotIn("private-test-token", str(output.call_args_list))
 
 
 if __name__ == "__main__":

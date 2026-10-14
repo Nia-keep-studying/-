@@ -1,4 +1,4 @@
-"""Read-only adapter for the local order API."""
+"""HTTP adapter for the local customer-support API."""
 from urllib.parse import quote
 
 import httpx
@@ -78,6 +78,36 @@ def is_logged_in(access_token:str)-> bool:
 
     response.raise_for_status()
     return True
+
+def create_human_ticket(
+    access_token:str,
+    summary:str,
+    reason:str,
+    conversation_id:str,
+    order_id:str|None = None,
+    policy_reference:str|None = None,
+) -> dict:
+    json = {"summary":summary,"reason":reason,"conversation_id":conversation_id}
+    if order_id is not None:
+        json["order_id"]=order_id
+    if policy_reference is not None:
+        json["policy_reference"]=policy_reference
+    response = httpx.post(
+        f"{ORDER_API_BASE_URL}/human-tickets",
+        headers={
+            "Authorization":f"Bearer {access_token}"
+        },
+        json=json,
+        timeout=5
+    )
+
+    if response.status_code == 401:
+        return {"code":"unauthenticated","error":"身份验证失败，请重新登录"}
+    if response.status_code == 404:
+        return {"error":"无法关联对应订单"}
+
+    response.raise_for_status()
+    return response.json()
 
 if __name__ == "__main__":
     from getpass import getpass

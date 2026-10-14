@@ -1,9 +1,11 @@
 """Login and customer read permissions using an isolated temporary database."""
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from contextlib import ExitStack
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, create_engine, select
@@ -183,6 +185,72 @@ class AuthSessionTests(unittest.TestCase):
         with Session(self.engine) as session:
             self.assertEqual(session.exec(select(server.HumanTicket)).all(), [])
 
+    def test_agent_ticket_tool_saves_current_thread_and_hides_runtime(self):
+        from langchain_core.messages import AIMessage, ToolMessage
+        from agent.langchain_agent_demo import build_agent
+        from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
+        from rag.rag_loader import load_documents, split_documents
+
+        registered = []
+
+        class RecordingModel(ToolCallingModel):
+            def bind_tools(self, tools, **kwargs):
+                registered.extend(tools)
+                return self
+
+        token = self.login()
+        inputs = [("first-thread", None), ("new-thread", "A1001"), ("denied-thread", "A2001")]
+        responses = []
+        for number, (_, order_id) in enumerate(inputs):
+            args = {"summary": "需要人工确认售后条件", "reason": "用户主动要求人工"}
+            if order_id is not None:
+                args["order_id"] = order_id
+            responses.extend([
+                AIMessage(content="", tool_calls=[{
+                    "name": "create_support_ticket", "args": args,
+                    "id": f"ticket-call-{number}", "type": "tool_call",
+                }]),
+                AIMessage(content="模拟最终回答"),
+            ])
+        chunks = split_documents(load_documents())
+        embedding = FakeEmbedding()
+        agent = build_agent(RecordingModel(responses=responses), chunks, embedding,
+                            embedding.encode(chunks), FakeReranker(), token)
+
+        def local_post(url, **kwargs):
+            kwargs.pop("timeout", None)
+            return self.client.post(url, **kwargs)
+
+        config = {"configurable": {"thread_id": "first-thread"}}
+        saved_ids = []
+        with patch.object(order_client.httpx, "post", side_effect=local_post) as post:
+            for number, (thread_id, order_id) in enumerate(inputs):
+                config["configurable"]["thread_id"] = thread_id
+                result = agent.invoke({"messages": [{"role": "user", "content": "请转人工"}]}, config=config)
+                messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+                self.assertEqual(messages[0].tool_call_id, f"ticket-call-{number}")
+                self.assertNotIn(token, messages[0].content)
+                body = json.loads(messages[0].content)
+                if order_id == "A2001":
+                    self.assertIn("error", body)
+                    self.assertNotIn("ticket_id", body)
+                else:
+                    self.assertEqual(body["status"], "待处理")
+                    saved_ids.append(body["ticket_id"])
+                self.assertEqual(post.call_args.kwargs["headers"], self.headers(token))
+                self.assertEqual(post.call_args.kwargs["json"]["conversation_id"], thread_id)
+
+        tools = {tool.name: tool for tool in registered}
+        schema = tools["create_support_ticket"].tool_call_schema.model_json_schema()
+        self.assertEqual(set(schema["properties"]), {"summary", "reason", "order_id", "policy_reference"})
+        with Session(self.engine) as session:
+            tickets = session.exec(select(server.HumanTicket)).all()
+            self.assertEqual(len(tickets), 2)
+            self.assertEqual({t.ticket_id for t in tickets}, set(saved_ids))
+            self.assertEqual({t.conversation_id for t in tickets}, {"first-thread", "new-thread"})
+            self.assertEqual({t.order_id for t in tickets}, {None, "A1001"})
+            self.assertTrue(all(t.user_id == "U1001" and t.status == "待处理" for t in tickets))
+
     def test_return_page_is_public_shell_with_protected_order_data(self):
         response = self.client.get("/demo/return-application?order_id=A1001")
         self.assertEqual(response.status_code, 200)
@@ -190,6 +258,63 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn("A1001", response.text)
         self.assertEqual(self.client.get("/orders/A1001").status_code, 401)
+
+    def test_saved_ticket_is_not_repeated_after_model_failure(self):
+        from openai import APIConnectionError
+        from langchain_core.messages import AIMessage
+        from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
+        from agent import langchain_agent_demo as app
+
+        token = self.login()
+        model_calls = []
+
+        class FailingAfterToolModel(ToolCallingModel):
+            def _generate(self, *args, **kwargs):
+                model_calls.append(len(model_calls) + 1)
+                if len(model_calls) == 2:
+                    raise APIConnectionError(request=httpx.Request("POST", "http://example.test/model"))
+                return super()._generate(*args, **kwargs)
+
+        model = FailingAfterToolModel(responses=[
+            AIMessage(content="", tool_calls=[{
+                "name": "create_support_ticket",
+                "args": {"summary": "需要人工处理退货", "reason": "用户明确要求人工"},
+                "id": "saved-ticket-call", "type": "tool_call",
+            }]),
+            AIMessage(content="新会话恢复后的回答"),
+        ])
+        agent = app.build_agent(model, [], FakeEmbedding(), [], FakeReranker(), token)
+
+        def local_post(url, **kwargs):
+            kwargs.pop("timeout", None)
+            return self.client.post(url, **kwargs)
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.dict("os.environ", {"DEEPSEEK_API_KEY": "offline-test-key"}))
+            stack.enter_context(patch("builtins.input", side_effect=["alice", "帮我转人工", "你好", "q"]))
+            output = stack.enter_context(patch("builtins.print"))
+            stack.enter_context(patch.object(app, "getpass", return_value="test-password"))
+            stack.enter_context(patch.object(app, "login", return_value={"access_token": token, "username": "alice"}))
+            stack.enter_context(patch.object(app, "is_logged_in", return_value=True))
+            stack.enter_context(patch.object(app, "uuid4", side_effect=["ticket-saved-thread", "recovery-thread"]))
+            for name in ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]:
+                stack.enter_context(patch.object(app, name))
+            stack.enter_context(patch.object(app, "build_agent", return_value=agent))
+            post = stack.enter_context(patch.object(order_client.httpx, "post", side_effect=local_post))
+            app.main()
+            self.assertEqual(post.call_count, 1)
+            self.assertEqual(len(model_calls), 3)
+            output.assert_any_call("本轮请求未能正常完成，异常类型：", "APIConnectionError")
+            output.assert_any_call("最终回答：", "新会话恢复后的回答")
+            self.assertNotIn(token, str(output.call_args_list))
+        with Session(self.engine) as session:
+            tickets = session.exec(select(server.HumanTicket)).all()
+            self.assertEqual(len(tickets), 1)
+            self.assertEqual(tickets[0].conversation_id, "ticket-saved-thread")
+        old_messages = agent.get_state({"configurable": {"thread_id": "ticket-saved-thread"}}).values["messages"]
+        self.assertEqual([m.type for m in old_messages], ["human", "ai", "tool"])
+        new_messages = agent.get_state({"configurable": {"thread_id": "recovery-thread"}}).values["messages"]
+        self.assertEqual([m.type for m in new_messages], ["human", "ai"])
 
     def test_http_client_credentials_filters_and_empty_results(self):
         def local_request(method):
