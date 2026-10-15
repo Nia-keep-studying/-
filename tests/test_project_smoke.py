@@ -11,7 +11,7 @@ import httpx
 import numpy as np
 from openai import APITimeoutError, APIStatusError
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlmodel import Session, create_engine, select
 
 from agent.langchain_agent_demo import build_agent
@@ -187,6 +187,43 @@ class ProjectSmokeTests(unittest.TestCase):
                 self.assertEqual(validation.call_count, len(checks))
                 output.assert_any_call("登录已失效，请重新运行程序并登录")
 
+    def test_chat_turn_passes_context_and_counts_only_reported_new_usage(self):
+        history = [AIMessage(content="旧回答", usage_metadata={
+            "input_tokens": 900, "output_tokens": 99, "total_tokens": 999,
+        })]
+        messages = history + [
+            HumanMessage(content="查订单"),
+            AIMessage(content="", usage_metadata={
+                "input_tokens": 10, "output_tokens": 2, "total_tokens": 12,
+            }, tool_calls=[{
+                "name": "query_order", "args": {"order_id": "A1001"},
+                "id": "usage-call", "type": "tool_call",
+            }]),
+            ToolMessage(content="已发货", name="query_order", tool_call_id="usage-call"),
+            AIMessage(content="无用量记录的消息"),
+            AIMessage(content="订单已发货", usage_metadata={
+                "input_tokens": 20, "output_tokens": 3, "total_tokens": 23,
+            }),
+        ]
+        fake_agent = Mock()
+        fake_agent.get_state.return_value = SimpleNamespace(values={"messages": history})
+        fake_agent.invoke.return_value = {"messages": messages}
+        config = {"configurable": {"thread_id": "usage-thread"}}
+        context = agent_app.AgentContext(access_token="private-context-token")
+        with patch("builtins.print") as output, \
+             patch("builtins.input", side_effect=AssertionError("Unexpected terminal input")), \
+             patch.object(agent_app, "perf_counter", side_effect=[1.0, 2.0]):
+            answer = agent_app.run_chat_turn(fake_agent, "查订单", config, context=context)
+        self.assertEqual(answer, "订单已发货")
+        fake_agent.invoke.assert_called_once_with(
+            {"messages": [{"role": "user", "content": "查订单"}]},
+            config=config, context=context,
+        )
+        output.assert_any_call("本轮已报告token用量：输入30,输出5,合计35")
+        output.assert_any_call("本轮Agent执行耗时：1.00秒")
+        self.assertNotIn(context.access_token, str(output.call_args_list))
+        self.assertFalse(any(c.args[0] == "最终回答：" for c in output.call_args_list))
+
     def test_chat_request_errors_switch_thread_and_do_not_retry_question(self):
         request = httpx.Request("POST", "http://example.test/api")
         errors = [
@@ -210,7 +247,8 @@ class ProjectSmokeTests(unittest.TestCase):
                     stack.enter_context(patch.object(agent_app, name))
                 calls = []
 
-                def invoke(data, config):
+                def invoke(data, config, context):
+                    self.assertEqual(context.access_token, "private-test-token")
                     calls.append((data["messages"][0]["content"], config["configurable"]["thread_id"]))
                     if len(calls) == 1:
                         raise error

@@ -4,6 +4,7 @@ import httpx
 from uuid import uuid4
 from time import perf_counter
 from openai import APIError
+from dataclasses import dataclass
 
 from settings import DEEPSEEK_MODEL
 from langchain.agents import create_agent
@@ -18,6 +19,11 @@ from rag.rag_loader import load_documents, split_documents
 from rag.embedding_demo import load_embedding_model, build_chunk_vectors
 from rag.rerank_demo import load_rerank_model
 from getpass import getpass
+
+@dataclass
+class AgentContext:
+    """由程序提供的本次执行数据；工具读取方式将在下一步迁移。"""
+    access_token: str
 
 def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,access_token:str):
     """Pass prepared resources explicitly; importing this module does not load models."""
@@ -71,7 +77,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
     def create_support_ticket(
         summary:str,
         reason:str,
-        runtime:ToolRuntime,
+        runtime:ToolRuntime[AgentContext],
         order_id:str|None=None,
         policy_reference:str|None=None,
     )->dict:
@@ -100,6 +106,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         model=model,
         tools=[query_order, search_policy,query_orders,query_return_entry,create_support_ticket],
         checkpointer=InMemorySaver(),
+        context_schema=AgentContext,
         system_prompt=(
             "你是订单客服助手。"
             "订单信息必须通过 query_order 或 query_orders 获取，不得编造。"
@@ -136,6 +143,58 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         ),
     )
 
+def run_chat_turn(agent, question: str, config: dict, context: AgentContext):
+    """处理一个问题并返回回答；输入和回答展示由调用方负责。"""
+    # 记录调用前的历史长度，后面只打印本轮新增的消息。
+    state = agent.get_state(config)
+    previous_message_count = len(state.values.get("messages",[]))
+
+    print("当前会话编号:",config["configurable"]["thread_id"])
+
+    # 执行这一轮任务；异常交给调用方处理，耗时仍会打印。
+    started_at = perf_counter()
+    try:
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": question}]},
+            config=config,
+            context=context,
+        )
+    finally:
+        elapsed_seconds = perf_counter() - started_at
+        print(f"本轮Agent执行耗时：{elapsed_seconds:.2f}秒")
+
+    # 运行信息留在后端日志中，不作为回答返回。
+    new_messages = result["messages"][previous_message_count:]
+
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+
+    for index, message in enumerate(new_messages, start=1):
+        print(index, message.type)
+
+        if message.type=="ai":
+            if message.usage_metadata is not None:
+                print("本次模型调用的token用量：",message.usage_metadata)
+                input_tokens += message.usage_metadata["input_tokens"]
+                output_tokens += message.usage_metadata["output_tokens"]
+                total_tokens += message.usage_metadata["total_tokens"]
+
+            for call in message.tool_calls:
+                print(
+                    "工具调用：",call["name"],
+                    "参数:",call["args"],
+                    "调用编号:",call["id"],
+                )
+        elif message.type == "tool":
+            print(
+                "工具返回:",message.name,
+                "调用编号:",message.tool_call_id
+            )
+    print(f"本轮已报告token用量：输入{input_tokens},输出{output_tokens},合计{total_tokens}")
+    print("当前历史消息条数：", len(result["messages"]))
+    return result["messages"][-1].content
+
 
 def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
@@ -148,16 +207,26 @@ def main():
         password = getpass("密码:")
         if password.lower() == "q":
             return
-
-
         try:
             login_result = login(username,password)
             break
-        except httpx.HTTPError as exc:
-            print("本轮请求未能正常完成，异常类型：",type(exc).__name__)
-            continue
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
 
+            if status_code == 401:
+                print("用户名或密码错误，请重新输入")
+            elif status_code == 429:
+                print("登录请求过于频繁，请稍后再试")
+            elif 500 <= status_code <600:
+                print("登录服务暂时异常，请稍后重试")
+            else:
+                print("登录请求失败，状态码：",status_code)
+            continue
+        except httpx.RequestError as exc:
+            print("请求失败，请稍后重试",type(exc).__name__)
+            continue
     access_token = login_result["access_token"]
+    context = AgentContext(access_token=access_token)
 
     print("已登录：",login_result["username"])
 
@@ -173,7 +242,7 @@ def main():
         extra_body={"thinking": {"type": "disabled"}},
     )
     agent = build_agent(
-        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,access_token,
+        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,access_token
     )
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 10}
 
@@ -198,47 +267,18 @@ def main():
             print("登录已失效，请重新运行程序并登录")
             break
 
-        state = agent.get_state(config)
-        previous_message_count = len(state.values.get("messages",[]))
-
-        print("当前会话编号:",config["configurable"]["thread_id"])
-
-        started_at = perf_counter()
+        # 终端把问题交给执行函数，再负责展示返回的回答。
         try:
-            result = agent.invoke(
-                {"messages": [{"role": "user", "content": question}]}, config=config
-            )
-        except (httpx.HTTPError,APIError) as exc:
-            print("本轮请求未能正常完成，异常类型：",type(exc).__name__)
+            answer = run_chat_turn(agent, question, config, context=context)
+        except (httpx.HTTPError, APIError) as exc:
+            print("本轮请求未能正常完成，异常类型：", type(exc).__name__)
             print("如果涉及工单创建，请先核对保存结果，再决定是否重新提交。")
-
-            config['configurable']["thread_id"] = str(uuid4())
-            print("已切换到新会话，编号：",config["configurable"]["thread_id"])
+            config["configurable"]["thread_id"] = str(uuid4())
+            print("已切换到新会话，编号：", config["configurable"]["thread_id"])
             continue
-        finally:
-            elapsed_seconds = perf_counter() - started_at
-            print(f"本轮Agent执行耗时：{elapsed_seconds:.2f}秒")
 
-        new_messages = result["messages"][previous_message_count:]
+        print("最终回答：", answer)
 
-        for index, message in enumerate(new_messages, start=1):
-            print(index, message.type)
-
-            if message.type=="ai":
-                for call in message.tool_calls:
-                    print(
-                        "工具调用：",call["name"],
-                        "参数:",call["args"],
-                        "调用编号:",call["id"],
-                    )
-            elif message.type == "tool":
-                print(
-                    "工具返回:",message.name,
-                    "调用编号:",message.tool_call_id
-                )
-
-        print("最终回答：", result["messages"][-1].content)
-        print("当前历史消息条数：", len(result["messages"]))
 
 if __name__ == "__main__":
     main()
