@@ -30,7 +30,10 @@ class AuthSessionTests(unittest.TestCase):
         self.addCleanup(self.engine.dispose)
         self.enterContext(patch.object(server, "database_file", database))
         self.enterContext(patch.object(server, "engine", self.engine))
-        self.client = self.enterContext(TestClient(server.app))
+        # Lifespan now prepares the Agent; offline checks must never load real models.
+        with patch("agent.langchain_agent_demo.initialize_agent", return_value=object()) as initialize:
+            self.client = self.enterContext(TestClient(server.app))
+        self.initialize_agent = initialize
         with Session(self.engine) as session:
             session.add_all([
                 server.User(user_id="U1001", username="alice", password_hash=server.password_hasher.hash("auth-test-password")),
@@ -54,6 +57,95 @@ class AuthSessionTests(unittest.TestCase):
     @staticmethod
     def headers(token):
         return {"Authorization": f"Bearer {token}"}
+
+    def test_chat_runs_tools_and_keeps_history_only_in_the_selected_thread(self):
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+        from agent.langchain_agent_demo import build_agent
+        from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
+
+        model_inputs = []
+
+        class RecordingModel(ToolCallingModel):
+            def _generate(self, messages, *args, **kwargs):
+                model_inputs.append(list(messages))
+                return super()._generate(messages, *args, **kwargs)
+
+        agent = build_agent(RecordingModel(responses=[
+            AIMessage(content="", tool_calls=[{
+                "name": "query_order", "args": {"order_id": "A1001"},
+                "id": "chat-order-lookup", "type": "tool_call",
+            }]),
+            AIMessage(content="A1001 的电脑已发货。"),
+            AIMessage(content="刚才查询的是 A1001。"),
+            AIMessage(content="这是新会话。"),
+        ]), [], FakeEmbedding(), [], FakeReranker())
+        token = self.login()
+        question = "查询 A1001 的订单"
+
+        def local_get(url, **kwargs):
+            kwargs.pop("timeout", None)
+            return self.client.get(url, **kwargs)
+
+        with patch.object(server.app.state, "agent", agent), \
+             patch.object(order_client.httpx, "get", side_effect=local_get) as lookup, \
+             patch("builtins.print"):
+            first = self.client.post("/chat", headers=self.headers(token), json={"question": question})
+            self.assertEqual(first.status_code, 200)
+            conversation_id = first.json()["conversation_id"]
+            self.assertEqual(first.json()["answer"], "A1001 的电脑已发货。")
+            self.assertEqual(lookup.call_args.kwargs["headers"], self.headers(token))
+
+            second = self.client.post("/chat", headers=self.headers(token), json={
+                "question": "刚才查的是哪一单？", "conversation_id": conversation_id,
+            })
+            self.assertEqual(second.status_code, 200)
+            self.assertEqual(second.json()["conversation_id"], conversation_id)
+            self.assertEqual(second.json()["answer"], "刚才查询的是 A1001。")
+            self.assertTrue(any(isinstance(m, HumanMessage) and m.content == question for m in model_inputs[2]))
+            self.assertTrue(any(isinstance(m, ToolMessage) and "A1001" in m.content for m in model_inputs[2]))
+
+            fresh = self.client.post("/chat", headers=self.headers(token), json={"question": "你好"})
+            self.assertEqual(fresh.status_code, 200)
+            self.assertNotEqual(fresh.json()["conversation_id"], conversation_id)
+            self.assertFalse(any(isinstance(m, HumanMessage) and m.content == question for m in model_inputs[3]))
+
+        self.initialize_agent.assert_called_once_with()
+        with Session(self.engine) as session:
+            conversations = session.exec(select(server.ChatConversation)).all()
+            self.assertEqual(len(conversations), 2)
+            self.assertTrue(all(c.user_id == "U1001" and c.created_at > 0 for c in conversations))
+        self.assertNotIn(token, repr(model_inputs))
+
+    def test_chat_rejects_other_owners_invalid_sessions_and_blank_questions_before_agent(self):
+        alice, bob = self.login(), self.login("bob")
+        with patch("agent.langchain_agent_demo.run_chat_turn", return_value="模拟回答") as run:
+            created = self.client.post("/chat", headers=self.headers(alice), json={"question": "你好"})
+            self.assertEqual(created.status_code, 200)
+            conversation_id = created.json()["conversation_id"]
+            run.reset_mock()
+
+            cases = [
+                (self.headers(bob), {"question": "继续", "conversation_id": conversation_id}, 404),
+                (self.headers(alice), {"question": "继续", "conversation_id": "missing-thread"}, 404),
+                ({}, {"question": "你好"}, 401),
+                (self.headers("invalid-token"), {"question": "你好"}, 401),
+                (self.headers(alice), {"question": "   "}, 422),
+                (self.headers(alice), {"question": ""}, 422),
+            ]
+            for headers, body, expected in cases:
+                with self.subTest(status=expected, body=body):
+                    response = self.client.post("/chat", headers=headers, json=body)
+                    self.assertEqual(response.status_code, expected)
+            self.assertEqual(self.client.post("/logout", headers=self.headers(alice)).status_code, 204)
+            expired = self.client.post("/chat", headers=self.headers(alice), json={
+                "question": "继续", "conversation_id": conversation_id,
+            })
+            self.assertEqual(expired.status_code, 401)
+            run.assert_not_called()
+
+        with Session(self.engine) as session:
+            conversations = session.exec(select(server.ChatConversation)).all()
+            self.assertEqual([(c.conversation_id, c.user_id) for c in conversations], [(conversation_id, "U1001")])
 
     def test_login_checks_password_and_stores_only_token_hash(self):
         for username, password in [("alice", "incorrect"), ("missing", "auth-test-password")]:
@@ -127,7 +219,7 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual(operations, {
             ("POST", "/login"), ("GET", "/me"), ("POST", "/logout"),
             ("GET", "/orders"), ("GET", "/orders/{order_id}"),
-            ("POST", "/human-tickets"),
+            ("POST", "/human-tickets"), ("POST", "/chat"),
         })
 
     def ticket_payload(self, **changes):
@@ -187,7 +279,7 @@ class AuthSessionTests(unittest.TestCase):
 
     def test_agent_ticket_tool_saves_current_thread_and_hides_runtime(self):
         from langchain_core.messages import AIMessage, ToolMessage
-        from agent.langchain_agent_demo import build_agent
+        from agent.langchain_agent_demo import AgentContext, build_agent
         from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
         from rag.rag_loader import load_documents, split_documents
 
@@ -215,7 +307,7 @@ class AuthSessionTests(unittest.TestCase):
         chunks = split_documents(load_documents())
         embedding = FakeEmbedding()
         agent = build_agent(RecordingModel(responses=responses), chunks, embedding,
-                            embedding.encode(chunks), FakeReranker(), token)
+                            embedding.encode(chunks), FakeReranker())
 
         def local_post(url, **kwargs):
             kwargs.pop("timeout", None)
@@ -226,7 +318,8 @@ class AuthSessionTests(unittest.TestCase):
         with patch.object(order_client.httpx, "post", side_effect=local_post) as post:
             for number, (thread_id, order_id) in enumerate(inputs):
                 config["configurable"]["thread_id"] = thread_id
-                result = agent.invoke({"messages": [{"role": "user", "content": "请转人工"}]}, config=config)
+                result = agent.invoke({"messages": [{"role": "user", "content": "请转人工"}]},
+                                      config=config, context=AgentContext(access_token=token))
                 messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
                 self.assertEqual(messages[0].tool_call_id, f"ticket-call-{number}")
                 self.assertNotIn(token, messages[0].content)
@@ -283,7 +376,7 @@ class AuthSessionTests(unittest.TestCase):
             }]),
             AIMessage(content="新会话恢复后的回答"),
         ])
-        agent = app.build_agent(model, [], FakeEmbedding(), [], FakeReranker(), token)
+        agent = app.build_agent(model, [], FakeEmbedding(), [], FakeReranker())
 
         def local_post(url, **kwargs):
             kwargs.pop("timeout", None)
@@ -315,6 +408,104 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual([m.type for m in old_messages], ["human", "ai", "tool"])
         new_messages = agent.get_state({"configurable": {"thread_id": "recovery-thread"}}).values["messages"]
         self.assertEqual([m.type for m in new_messages], ["human", "ai"])
+
+    def test_shared_agent_uses_each_run_identity_for_all_business_tools(self):
+        from langchain_core.messages import AIMessage, ToolMessage
+        from agent.langchain_agent_demo import AgentContext, build_agent
+        from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
+
+        alice_old = self.login("alice")
+        bob = self.login("bob")
+        alice_new = self.login("alice")
+        cases = [
+            ("alice-first", alice_old, "U1001", "A1001", "A1001", False),
+            ("bob-next", bob, "U1002", "A2001", "A1001", False),
+            ("alice-new-token", alice_new, "U1001", "A1001", "A1001", False),
+            ("revoked-token", alice_old, "U1001", "A1001", "A1001", True),
+        ]
+        registered, responses, model_messages = [], [], []
+        for index, (_, _, _, order_id, detail_id, _) in enumerate(cases):
+            calls = [
+                ("query_order", {"order_id": detail_id}),
+                ("query_orders", {}),
+                ("query_return_entry", {"order_id": order_id}),
+                ("create_support_ticket", {
+                    "summary": "请人工确认退货条件", "reason": "用户主动要求人工",
+                    "order_id": order_id,
+                }),
+            ]
+            responses.extend([
+                AIMessage(content="", tool_calls=[{
+                    "name": name, "args": args, "id": f"identity-{index}-{name}",
+                    "type": "tool_call",
+                } for name, args in calls]),
+                AIMessage(content="模拟本轮结束"),
+            ])
+
+        class RecordingModel(ToolCallingModel):
+            def bind_tools(self, tools, **kwargs):
+                registered.extend(tools)
+                return self
+
+            def _generate(self, messages, *args, **kwargs):
+                model_messages.extend(messages)
+                return super()._generate(messages, *args, **kwargs)
+
+        agent = build_agent(RecordingModel(responses=responses), [], FakeEmbedding(), [], FakeReranker())
+
+        def local_request(method):
+            def send(url, **kwargs):
+                kwargs.pop("timeout", None)
+                return getattr(self.client, method)(url, **kwargs)
+            return send
+
+        with patch.object(order_client.httpx, "get", side_effect=local_request("get")) as get, \
+             patch.object(order_client.httpx, "post", side_effect=local_request("post")) as post:
+            for index, (thread_id, token, user_id, order_id, detail_id, revoked) in enumerate(cases):
+                with self.subTest(thread=thread_id):
+                    get.reset_mock()
+                    post.reset_mock()
+                    result = agent.invoke(
+                        {"messages": [{"role": "user", "content": "查询订单和入口，并按我的要求转人工"}]},
+                        config={"configurable": {"thread_id": thread_id}},
+                        context=AgentContext(access_token=token),
+                    )
+                    tools = {m.name: json.loads(m.content) for m in result["messages"] if isinstance(m, ToolMessage)}
+                    self.assertEqual(get.call_count, 3)
+                    self.assertEqual(post.call_count, 1)
+                    for call in [*get.call_args_list, *post.call_args_list]:
+                        self.assertEqual(call.kwargs["headers"], self.headers(token))
+                    self.assertEqual(post.call_args.kwargs["json"]["conversation_id"], thread_id)
+                    if revoked:
+                        self.assertTrue(all(body["code"] == "unauthenticated" for body in tools.values()))
+                    else:
+                        self.assertTrue(all(order["user_id"] == user_id for order in tools["query_orders"]))
+                        self.assertTrue(tools["query_orders"])
+                        self.assertEqual(tools["query_return_entry"]["order_id"], order_id)
+                        self.assertIn("entry_url", tools["query_return_entry"])
+                        self.assertIn("ticket_id", tools["create_support_ticket"])
+                        self.assertEqual(tools["create_support_ticket"]["order_id"], order_id)
+                        if thread_id == "bob-next":
+                            self.assertIn("error", tools["query_order"])
+                        else:
+                            self.assertEqual(tools["query_order"]["user_id"], user_id)
+                    if index == 0:
+                        self.assertEqual(self.client.post("/logout", headers=self.headers(alice_old)).status_code, 204)
+
+        for tool in registered:
+            properties = tool.tool_call_schema.model_json_schema()["properties"]
+            self.assertNotIn("runtime", properties)
+            self.assertNotIn("access_token", properties)
+        for token in (alice_old, bob, alice_new):
+            self.assertNotIn(token, repr(model_messages))
+        with Session(self.engine) as session:
+            tickets = session.exec(select(server.HumanTicket)).all()
+            self.assertEqual(len(tickets), 3)
+            self.assertEqual({t.conversation_id: (t.user_id, t.order_id) for t in tickets}, {
+                "alice-first": ("U1001", "A1001"),
+                "bob-next": ("U1002", "A2001"),
+                "alice-new-token": ("U1001", "A1001"),
+            })
 
     def test_http_client_credentials_filters_and_empty_results(self):
         def local_request(method):

@@ -1,6 +1,6 @@
 # 顾客售后客服助手
 
-服务一个虚构商家的学习与作品项目，使用模拟订单和示例制度。复用订单 API、混合检索、重排序与 LangChain 会话循环；当前已接通登录身份、本人订单查询、候选订单确认、制度回答、退货演示入口与人工工单创建，并补充终端错误提示、执行计时和每轮已报告 token 统计。单轮执行已提取为函数，网页登录及聊天尚待接入。
+服务一个虚构商家的学习与作品项目，使用模拟订单和示例制度。复用订单 API、混合检索、重排序与 LangChain 会话循环；已接通本人订单查询、候选订单确认、制度回答、退货演示入口与人工工单创建。`POST /chat` 已完成身份验证、会话归属检查与单轮执行，并有首次回答、历史续接和跨账号拒绝的实际验收。顾客登录与聊天网页尚待接入，当前可通过接口文档或终端使用。
 
 ## 当前能力与下一步
 
@@ -12,12 +12,14 @@
 - 已验收工单：主动要求人工、建议后同意、暂不转人工不创建、可空订单、新会话关联及拒绝关联他人订单。只保存待处理记录，没有真实人工接听或处理台。
 - 终端运行：登录请求失败可重新输入，按401、429、5xx、其他状态与请求故障分别提示，用户名或密码输入 q 退出。只打印本轮新增消息及工具参数/编号；invoke 的 HTTPX 和模型 SDK 请求异常提示后切换新会话，成功或异常都输出本轮执行耗时。
 - 单轮执行：run_chat_turn 接收 agent、question、config 和 context，执行后返回回答，main 负责终端输入和回答展示。累计本轮新增 AI 消息中已报告的输入、输出和总 token；缺少用量时跳过，details 不重复加总。异常轮次可能漏报，不作为完整账单或费用结算。
-- 运行时身份迁移进行中：AgentContext 已通过 main → run_chat_turn → invoke 传入，并声明 context_schema；四项业务工具仍通过 build_agent 的闭包使用创建时凭证。尚未完成共享 Agent 的多用户身份切换，不可据此开放多用户共用。
-- 尚未实现：工具读取 runtime.context、统一网页登录及聊天、会话持久化与归属检查、上下文压缩、工单幂等、向量数据库、定期清理过期会话、完整翻页策略和 has_more；费用换算、未知异常及步骤上限处理仍待完善。
-- 第一版最终目标以 [需求与验收 v0.8](docs/第一版需求说明与验收样例_v0.8.docx) 为准。旧版本保留作历史记录。
+- 运行时身份：AgentContext 由 main 或聊天接口创建，经 run_chat_turn → invoke 传入；四项业务工具从 runtime.context.access_token 读取本次凭证，build_agent 不再接收用户凭证。公共制度检索继续复用外层资源。
+- HTTP 聊天：`initialize_agent()` 统一准备模型、文档切片及向量，后端 lifespan 初始化并保存到 `app.state.agent`。`/chat` 验证登录；无会话编号就生成并绑定当前用户，有编号则检查归属，不可访问返回404。完成数据库操作后释放会话，再组装 context/config，返回 `conversation_id` 和 `answer`。
+- 历史边界：数据库的 ChatConversation 只存会话归属；消息仍在本进程的 InMemorySaver 中，重启会丢失。当前按单进程使用，同会话并发处理尚未实现。
+- 尚未实现：统一登录聊天网页、历史读取接口、持久化检查点、上下文压缩、工单幂等、向量数据库、定期清理过期会话、完整翻页策略和 has_more；聊天接口异常响应、费用换算、未知异常及步骤上限处理仍待完善。
+- 第一版最终目标以 [需求与验收 v0.9](docs/第一版需求说明与验收样例_v0.9.docx) 为准。旧版本保留作历史记录。
 - 第一版通过业务入口引导顾客操作；提供链接不代表申请已提交、退款已批准或已经到账。人工工单只有保存成功才能告知编号，不表示人工已经接通。
 
-业务接口为 `POST /login`、`GET /me`、`POST /logout`、`GET /orders`、`GET /orders/{order_id}`、`POST /human-tickets`。登录之外均要求有效凭证；订单读取和工单关联都限制当前用户归属。`GET /demo/return-application` 是公开 HTML 外壳，隐藏于 OpenAPI，订单数据仍需登录。旧通用订单 POST/PATCH/PUT/DELETE 已移除。当前仅供本地模拟开发，完整网页鉴权、会话归属、部署与运行治理仍待补。
+业务接口为 `POST /login`、`GET /me`、`POST /logout`、`GET /orders`、`GET /orders/{order_id}`、`POST /human-tickets`、`POST /chat`。登录之外均要求有效凭证；订单读取、工单关联订单及聊天会话读取各自检查当前用户归属。`GET /demo/return-application` 是公开 HTML 外壳，隐藏于 OpenAPI，订单数据仍需登录。旧通用订单 POST/PATCH/PUT/DELETE 已移除。当前仅供本地模拟开发，顾客网页、部署与运行治理仍待补。
 
 订单创建、支付、发货和退款执行由订单或售后系统负责，不属于第一版助手。当前通过 seed_demo 提供模拟上游订单；客户端发送 Authorization 请求头，由后端确认身份与归属。本项目没有接入真实企业系统，也没有实现完整商城。
 
@@ -26,11 +28,11 @@
 ```text
 customer-support-assistant/
   agent/
-    langchain_agent_demo.py  # 模型、工具包装、Agent 和终端会话循环
+    langchain_agent_demo.py  # 资源初始化、工具包装、单轮执行和终端入口
     order_client.py          # 访问订单 HTTP API
     business_entry.py        # 订单校验与演示入口URL生成
   backend/
-    sqlmodel_server.py       # 登录、本人订单、页面响应与工单保存
+    sqlmodel_server.py       # 登录、本人订单、聊天会话归属与工单保存
     seed_demo.py             # 初始化两位模拟顾客及三笔订单
   rag/
     documents/              # 3 份公开示例制度
@@ -48,9 +50,9 @@ customer-support-assistant/
   .env.example
 ```
 
-backend、agent 和 rag 是同一个仓库中的 Python 包；订单 API 与 Agent 仍运行在两个进程。所有命令从仓库根目录执行，使用 `python -m`，无需 sys.path 修改或旁边的旧 Demo。原 order-agent 与 rag-demo 保留作学习阶段记录，后续综合项目功能在本仓库维护。
+backend、agent 和 rag 是同一个仓库中的 Python 包。HTTP 模式中，聊天 Agent 和订单 API 由同一个服务进程提供，工具仍通过 HTTP 调用订单接口；可选的终端入口运行在另一个进程。所有命令从仓库根目录执行，使用 `python -m`，无需 sys.path 修改或旁边的旧 Demo。原 order-agent 与 rag-demo 保留作学习阶段记录。
 
-Agent 的 `main()` 先循环登录，成功后只加载一次检索资源，通过 `build_agent(...)` 参数传给工具包装。内层工具使用外层函数提供的资源与凭证，这是闭包中的显式依赖传递，框架没有自动帮我们登录或加载模型。order_client 的 headers 携带身份，params 携带查询条件，json 携带登录或工单正文，后端从凭证确认 user_id。create_support_ticket 的 runtime 参数由框架注入，取本次 thread_id，而非捕获启动时的固定值。
+终端 `main()` 登录成功后调用 `initialize_agent()`；HTTP 服务则在 lifespan 中调用，并复用返回对象。制度工具通过闭包保留公共资源，业务工具通过 runtime.context 读取本次凭证；两者不混用。order_client 的 headers 携带身份，params 携带查询条件，json 携带登录或工单正文，后端从凭证确认 user_id。create_support_ticket 从 runtime.config 读取本次 thread_id。导入模块不会执行终端 main，也不会直接加载模型。
 
 ## 环境与启动（PowerShell）
 
@@ -72,7 +74,7 @@ Copy-Item .env.example .env
 
 脚本创建 `data/orders_sqlmodel.db`，其中 U1001（alice）拥有 A1001、A1002，U1002（bob）拥有 A2001，三笔订单均已发货。密码通过 pwdlib/Argon2 生成哈希后保存；演示密码分别为 `demo-password` 和 `demo_password_2`。重复运行会跳过已存在的编号，不覆盖已有记录。初始化脚本通过模块方式运行，不直接执行 backend/seed_demo.py。
 
-终端 1 启动订单 API，使用 8001 端口与旧 Demo 的 8000 区分：
+启动后端服务，使用 8001 端口与旧 Demo 的 8000 区分。服务现在也会初始化聊天 Agent，需要先配置有效的 DEEPSEEK_API_KEY 并等待本地模型加载完成：
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.sqlmodel_server:app --host 127.0.0.1 --port 8001
@@ -85,11 +87,29 @@ Copy-Item .env.example .env
 3. 调用 `/me` 得到当前用户；Alice 的列表只有 A1001/A1002，访问 Bob 的 A2001 返回 404。替换为 Bob 的凭证后列表只有 A2001。
 4. 调用 `/logout` 返回 204，保留旧凭证再次查询应返回 401；重新登录取得新凭证后恢复。
 
+### HTTP 聊天验收
+
+保持 Alice 的有效授权，调用 `POST /chat`：
+
+```json
+{"question":"帮我查询 A1001 的订单状态"}
+```
+
+预期200，返回 `conversation_id` 和 `answer`。保存会话编号，用它继续提问：
+
+```json
+{"question":"我刚才查询的是哪个订单？","conversation_id":"替换为实际会话编号"}
+```
+
+预期仍为同一编号，模型能根据历史指出 A1001。随后登录 Bob 并替换 Authorize 中的凭证，`GET /me` 确认身份，再携带 Alice 的编号请求 `/chat`，预期404，在执行 Agent 前拒绝。首次请求省略编号或传null表示新会话，未知编号不会自动创建。空白问题422，无效凭证401。
+
+当前没有独立的顾客聊天网页；接口文档验收不等于已完成前端。进程重启后归属记录仍在，内存消息会丢失。
+
 凭证保存在数据库中的形式是 SHA-256 哈希，用户密码使用 pwdlib/Argon2；身份验证不会把密码哈希返回客户端。有效期由 `LOGIN_SESSION_TTL_SECONDS` 控制，当前为一小时。过期记录即使尚未删除，也不能通过验证；修改有效期只影响之后签发的会话。到期测试已用一分钟配置完成，随后恢复一小时。
 
 数据库独立于旧 Demo；已有数据库不会因为 Python 模型修改而自动迁移。当前使用带 user_id 的新项目数据库，示例数据由 seed_demo 准备。
 
-保持订单服务运行，在第二个终端启动 Agent：
+如需使用原终端聊天入口，保持后端运行，在另一个终端启动。这个入口会另外创建自己的 Agent 和内存历史，不与 HTTP 聊天历史共用：
 
 ```powershell
 .\.venv\Scripts\python.exe -m agent.langchain_agent_demo
@@ -106,7 +126,7 @@ Copy-Item .env.example .env
 
 当前详情未找到订单返回通用错误，列表无匹配返回 []，凭证失效返回错误字典，服务故障不当作空结果。invoke前检查不保证整轮有效，订单API仍逐请求验证。执行中的HTTPX HTTPError和模型SDK APIError在聊天循环捕获：提示后启新会话，跳过本轮后续打印，不自动重跑失败问题。失败可能留下未配对工具消息，旧状态保留；工单也可能已保存，需核对结果。手动重提仍可能重复，幂等未实现。步骤上限、未知异常及完整分页策略仍待补。
 
-`perf_counter()` 与 `finally` 输出每轮 invoke 耗时，成功和已捕获异常都显示；不含登录、首次资源加载、调用前身份检查或后续日志。计时与模型token/费用统计不同，后者尚未实现。当前日志在invoke成功返回后打印，未接实时追踪平台。
+`perf_counter()` 与 `finally` 输出每轮 invoke 耗时，成功和已捕获异常都显示；不含登录、首次资源加载、调用前身份检查或后续日志。成功返回后累计本轮新增 AI 消息的已报告 token，缺失记录跳过；费用换算尚未实现。当前日志在invoke成功返回后打印，未接实时追踪平台。
 
 ## 业务入口与人工工单
 
@@ -128,7 +148,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m rag.eval_retrieval
 ```
 
-离线测试使用临时数据库及模拟模型，不修改演示数据库，不调用付费 API。检查覆盖账号密码、凭证哈希、用户订单隔离、登出和到期、初始化重复执行、业务路由范围、页面响应、工单保存与拒绝不写入，以及包导入、检索、工具消息配对、四项工具注册与可信凭证传递。还检查HTTP过滤、空列表及失效结果，以及invoke前验证失败不会调用Agent。模拟模型检查程序接线，不证明真实模型每次都会正确选择工具。
+离线测试使用临时数据库及模拟模型，启动时替换真实初始化，不下载模型、不修改演示数据库、不调用付费 API。当前28项检查覆盖账号密码、凭证哈希、订单隔离、登出到期、五项工具注册、运行时身份、工单和HTTP聊天。新增检查同线程历史进入后续模型输入、新线程独立，以及跨用户、无凭证、失效凭证与空白问题在执行前拒绝。模拟模型检查程序接线，不证明真实模型每次都会正确选择工具。
 
 原三题评估会加载本地嵌入模型，输出到 `data/evaluation_results.json`；它只评估重排序前的召回阶段，不代表完整回答质量。无依据题有候选片段也可能最终正确拒答，应分别观察召回噪声与回答是否有依据。
 
@@ -151,3 +171,7 @@ Copy-Item .env.example .env
 制度纠错：普通完好商品签收后七天申请已在《售后服务规则》中规定。此前助手称申请期限缺失不准确，不能将有据回答判成转人工失败；缺少说明的运费承担用于本次无依据场景。规则适用条件仍由原文约束，不表示所有商品都适用七天。
 
 2026-10-15 运行观察与网页准备：学习者实际核对密码错误后重输成功、服务未启动进入请求故障提示、执行耗时显示，以及多次模型调用的本轮token合计。助手纠正启动命令漏写8001导致的地址不一致，settings默认值与.env保持8001。run_chat_turn由助手按学习者要求提取，返回回答、日志留后端；context传递四处由学习者完成，业务工具仍取创建时凭证。25项离线检查及pip check通过，含context参数、历史用量不重复统计、None跳过及失败后恢复；工单运行时泛型标注已与AgentContext匹配。没有新增网页、真实退款或多用户共用能力；结构化业务验收记录暂缓。
+
+2026-10-16 工具运行时身份迁移：学习者将query_order、query_orders、query_return_entry、create_support_ticket统一改为runtime.context.access_token，删除build_agent定义及main调用中的旧凭证参数。26项离线检查通过；同一个Agent依次使用Alice、Bob及Alice新凭证，列表、详情、入口和工单请求头均来自本次context。Bob读取Alice订单被拒绝，撤销后的旧凭证四项业务工具均返回身份失效，数据库只保存各自归属的三张工单。凭证和runtime不出现在模型可填工具Schema，凭证不进入模型消息。模拟模型/临时数据库核对，不代表已上线多用户聊天；会话归属和并发管理仍待实现。
+
+2026-10-16 最终收尾：学习者完成initialize_agent及lifespan接入，新增ChatConversation、ChatRequest和POST /chat，修正数据库依赖为get_session；接口检查会话归属后释放数据库会话，再复用Agent执行。学习者实际确认首次回答、同编号历史追问、Bob访问Alice编号404且未执行Agent。28项完整离线检查通过，未再调用付费模型或改演示数据；顾客登录聊天网页、持久化检查点、历史读取、压缩、并发和工单幂等仍待补。下一步先消化数据流复盘，再接业务首页和右下角助手；UI目前仅确认设计方向。

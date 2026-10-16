@@ -109,10 +109,11 @@ class ProjectSmokeTests(unittest.TestCase):
             AIMessage(content="模拟最终回答"),
             AIMessage(content="新会话模拟回答"),
         ])
-        agent = build_agent(model, chunks, FakeEmbedding(), FakeEmbedding().encode(chunks), FakeReranker(), "test-token")
+        agent = build_agent(model, chunks, FakeEmbedding(), FakeEmbedding().encode(chunks), FakeReranker())
         first = agent.invoke(
             {"messages": [{"role": "user", "content": "发货后改地址"}]},
             config={"configurable": {"thread_id": "first"}},
+            context=agent_app.AgentContext(access_token="test-token"),
         )
         tool_messages = [message for message in first["messages"] if isinstance(message, ToolMessage)]
         self.assertEqual(tool_messages[0].tool_call_id, "policy-call-1")
@@ -121,6 +122,7 @@ class ProjectSmokeTests(unittest.TestCase):
         second = agent.invoke(
             {"messages": [{"role": "user", "content": "你好"}]},
             config={"configurable": {"thread_id": "second"}},
+            context=agent_app.AgentContext(access_token="test-token"),
         )
         self.assertEqual(len(second["messages"]), 2)
         self.assertEqual(len(first["messages"]), 4)
@@ -143,24 +145,25 @@ class ProjectSmokeTests(unittest.TestCase):
         ])
         chunks = split_documents(load_documents())
         token = "program-test-token"
-        agent = build_agent(model, chunks, FakeEmbedding(), FakeEmbedding().encode(chunks), FakeReranker(), token)
+        agent = build_agent(model, chunks, FakeEmbedding(), FakeEmbedding().encode(chunks), FakeReranker())
         with patch("agent.langchain_agent_demo.get_order_list", return_value=[{
             "order_id": "A1002", "product": "手机", "status": "已发货",
         }]) as lookup:
             result = agent.invoke(
                 {"messages": [{"role": "user", "content": "查已发货的手机订单"}]},
                 config={"configurable": {"thread_id": "order-list"}},
+                context=agent_app.AgentContext(access_token=token),
             )
         lookup.assert_called_once_with(
             access_token=token, status="已发货", product_keyword="手机", offset=0, limit=10,
         )
         tools = {tool.name: tool for tool in registered}
         self.assertEqual(set(tools), {"query_order", "query_orders", "search_policy", "query_return_entry", "create_support_ticket"})
-        self.assertEqual(set(tools["query_orders"].get_input_schema().model_json_schema()["properties"]), {
+        self.assertEqual(set(tools["query_orders"].tool_call_schema.model_json_schema()["properties"]), {
             "status", "product_keyword", "offset", "limit",
         })
-        self.assertEqual(set(tools["query_order"].get_input_schema().model_json_schema()["properties"]), {"order_id"})
-        self.assertEqual(set(tools["query_return_entry"].get_input_schema().model_json_schema()["properties"]), {"order_id"})
+        self.assertEqual(set(tools["query_order"].tool_call_schema.model_json_schema()["properties"]), {"order_id"})
+        self.assertEqual(set(tools["query_return_entry"].tool_call_schema.model_json_schema()["properties"]), {"order_id"})
         messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         self.assertEqual(messages[0].tool_call_id, "list-call-1")
         self.assertIn("A1002", messages[0].content)
@@ -299,7 +302,8 @@ class ProjectSmokeTests(unittest.TestCase):
                 self.assertTrue(all(resource.call_count == initializations for resource in resources))
                 fake.invoke.assert_not_called()
                 if initializations:
-                    self.assertEqual(build.call_args.args[-1], "private-test-token")
+                    self.assertEqual(len(build.call_args.args), 5)
+                    self.assertNotIn("access_token", build.call_args.kwargs)
                     output.assert_any_call("已登录：", "alice")
                 self.assertNotIn("private-test-token", str(output.call_args_list))
 

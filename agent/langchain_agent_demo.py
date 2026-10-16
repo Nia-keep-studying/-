@@ -22,18 +22,18 @@ from getpass import getpass
 
 @dataclass
 class AgentContext:
-    """由程序提供的本次执行数据；工具读取方式将在下一步迁移。"""
+    """由程序提供的本次执行数据，业务工具从运行时读取凭证。"""
     access_token: str
 
-def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,access_token:str):
+def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,):
     """Pass prepared resources explicitly; importing this module does not load models."""
     @tool
-    def query_order(order_id: str) -> dict:
+    def query_order(order_id: str,runtime:ToolRuntime[AgentContext],) -> dict:
         """根据订单编号查询订单信息，比如 A1001。"""
-        return get_order(order_id,access_token=access_token)
+        return get_order(order_id,access_token=runtime.context.access_token)
 
     @tool
-    def query_orders(status:str|None=None,product_keyword:str|None=None,offset:int=0,limit:int=10):
+    def query_orders(runtime:ToolRuntime[AgentContext],status:str|None=None,product_keyword:str|None=None,offset:int=0,limit:int=10):
         """
         查询当前登录用户的候选订单
         status可选：已发货、待发货、已取消；未指定则不限制状态。
@@ -41,7 +41,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         offset是跳过的订单数量；limit是返回数量，范围1到100.
         返回当前页的订单列表，空列表表示当前条件下没有匹配订单
         """
-        return get_order_list(access_token=access_token,status=status,product_keyword=product_keyword,offset=offset,limit=limit)
+        return get_order_list(access_token=runtime.context.access_token,status=status,product_keyword=product_keyword,offset=offset,limit=limit)
 
     @tool
     def search_policy(query: str) -> dict:
@@ -60,7 +60,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         )
 
     @tool
-    def query_return_entry(order_id:str)->dict:
+    def query_return_entry(order_id:str,runtime:ToolRuntime[AgentContext],)->dict:
         """
         获取当前用户指定订单的演示退货申请入口。
         用于已确认订单、用户已签收且明确想申请退货的场景，
@@ -70,7 +70,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         """
         return get_return_entry(
             order_id=order_id,
-            access_token=access_token,
+            access_token=runtime.context.access_token,
         )
 
     @tool
@@ -94,7 +94,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         conversation_id = runtime.config["configurable"]["thread_id"]
 
         return create_human_ticket(
-            access_token=access_token,
+            access_token=runtime.context.access_token,
             summary=summary,
             reason=reason,
             conversation_id=conversation_id,
@@ -196,6 +196,23 @@ def run_chat_turn(agent, question: str, config: dict, context: AgentContext):
     return result["messages"][-1].content
 
 
+def initialize_agent():
+    policy_chunks = split_documents(load_documents())
+    embedding_model = load_embedding_model()
+    policy_chunk_vectors = build_chunk_vectors(policy_chunks, embedding_model)
+    policy_reranker = load_rerank_model()
+    model = ChatDeepSeek(
+        model=DEEPSEEK_MODEL,
+        temperature=0,
+        timeout=30,
+        max_retries=1,
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    return build_agent(
+        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker
+    )
+
+
 def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请在项目根目录 .env 中设置 DEEPSEEK_API_KEY。")
@@ -230,20 +247,8 @@ def main():
 
     print("已登录：",login_result["username"])
 
-    policy_chunks = split_documents(load_documents())
-    embedding_model = load_embedding_model()
-    policy_chunk_vectors = build_chunk_vectors(policy_chunks, embedding_model)
-    policy_reranker = load_rerank_model()
-    model = ChatDeepSeek(
-        model=DEEPSEEK_MODEL,
-        temperature=0,
-        timeout=30,
-        max_retries=1,
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-    agent = build_agent(
-        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,access_token
-    )
+    agent = initialize_agent()
+
     config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 10}
 
     while True:

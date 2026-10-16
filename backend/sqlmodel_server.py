@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field,create_engine,Session,select
 from settings import DATABASE_PATH,LOGIN_SESSION_TTL_SECONDS,PROJECT_ROOT
-from fastapi import FastAPI,HTTPException,Query,Response,Depends
+from fastapi import FastAPI,HTTPException,Query,Response,Depends,Request
 from typing import Literal
 from contextlib import asynccontextmanager
 from pwdlib import PasswordHash
@@ -73,6 +73,21 @@ class HumanTicketCreate(SQLModel):
     )
     conversation_id:str=Field(min_length=1,max_length=100)
 
+class ChatConversation(SQLModel,table=True):
+    __tablename__ = "chat_conversations"
+
+    conversation_id:str = Field(primary_key=True)
+    user_id:str = Field(foreign_key="users.user_id",index=True)
+    created_at:int
+
+class ChatRequest(SQLModel):
+    question:str = Field(min_length=1,max_length=4000)
+    conversation_id:str|None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+    )
+
 database_file = DATABASE_PATH
 database_url = f"sqlite:///{database_file.as_posix()}"
 engine = create_engine(database_url, echo=False, connect_args={"check_same_thread": False})
@@ -83,7 +98,9 @@ def create_db_and_tables():
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    from agent.langchain_agent_demo import initialize_agent
     create_db_and_tables()
+    application.state.agent = initialize_agent()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -263,4 +280,68 @@ def create_human_ticket(
         "summary":ticket.summary,
         "status":ticket.status,
         "message":"工单已保存，状态为待处理。当前为演示流程，尚无真实客服接入。"
+    }
+
+@app.post("/chat")
+def chat(
+    chat_data:ChatRequest,
+    request:Request,
+    current_user:User = Depends(get_current_user),
+    credentials:HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    session:Session = Depends(get_session),
+):
+    from agent.langchain_agent_demo import AgentContext,run_chat_turn
+
+    question = chat_data.question.strip()
+    if not question:
+        raise HTTPException(status_code=422,detail="问题不能为空")
+
+    if chat_data.conversation_id is None:
+        conversation_id = str(uuid4())
+
+        conversation = ChatConversation(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            created_at=int(time.time())
+        )
+        session.add(conversation)
+        session.commit()
+    else:
+        statement = select(ChatConversation).where(
+            ChatConversation.conversation_id == chat_data.conversation_id,
+            ChatConversation.user_id == current_user.user_id,
+        )
+        conversation = session.exec(statement).first()
+
+        if conversation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="会话不存在或不可访问",
+            )
+
+        conversation_id = conversation.conversation_id
+
+    session.close()
+
+    agent = request.app.state.agent
+
+    context = AgentContext(
+        access_token=credentials.credentials,
+    )
+
+    config = {
+        "configurable":{"thread_id":conversation_id},
+        "recursion_limit":10,
+    }
+
+    answer = run_chat_turn(
+        agent=agent,
+        question=question,
+        config=config,
+        context=context,
+    )
+
+    return {
+        "conversation_id":conversation_id,
+        "answer":answer,
     }
