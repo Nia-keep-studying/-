@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173e35">
+  <title>栖物 · 顾客服务中心</title>
+  <meta name="description" content="查询订单、了解售后规则，或让小蛙帮你找到下一步。虚构商家的顾客服务演示。">
+  <style>
+    :root{font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:#19372f;background:#f2f5f1;font-synthesis:none;--ink:#19372f;--muted:#65756e;--line:#dbe3db;--green:#244f40;--lime:#d7f58a}
+    *{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button,a,input,textarea{-webkit-tap-highlight-color:transparent}button{cursor:pointer}a{color:inherit}button:disabled{cursor:wait;opacity:.5}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #709b54;outline-offset:4px}[hidden]{display:none!important}
+    .app-layout{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100dvh}.sidebar{position:sticky;top:0;height:100dvh;padding:32px 18px 22px;background:#153b31;color:#e8efe2;display:flex;flex-direction:column;gap:34px}.brand{display:flex;align-items:center;gap:11px;text-decoration:none;padding:0 13px}.brand-mark{width:32px;height:32px;background:#d7f58a;border-radius:10px;display:grid;place-items:center;color:#234a34;font-size:23px;font-weight:600;transform:rotate(-6deg)}.brand-name{font-size:22px;letter-spacing:3px;font-weight:650;line-height:1.2}.brand-name small{display:block;font-size:9px;letter-spacing:2px;font-weight:400;color:#94ac98;margin-top:6px}.nav-group-label{font-size:9px;letter-spacing:2px;color:#8aa68f;margin:3px 15px 13px}.sidebar-nav{display:flex;flex-direction:column;gap:7px}.sidebar-nav a,.sidebar-nav button{width:100%;text-align:left;border:0;background:transparent;display:flex;align-items:center;gap:13px;color:#b8cbb9;font-size:13px;text-decoration:none;padding:13px 15px;border-radius:9px;line-height:1.5}.sidebar-nav .active{background:#315343;color:#e2f6c9}.sidebar-nav .active:after{content:"";width:5px;height:5px;border-radius:50%;background:#d7f58a;margin-left:auto}.sidebar-nav a:hover,.sidebar-nav button:hover{background:#284c3d;color:#f4f9ee}.nav-symbol{width:18px;text-align:center;font-size:18px;line-height:1;font-family:Consolas,monospace}.sidebar-note{margin:auto 11px 0;border-top:1px solid #ffffff1b;padding-top:20px}.sidebar-note p{font-size:12px;margin:0 0 8px;line-height:1.7;color:#d1dfca}.sidebar-note span{font-size:10px;color:#90a990;line-height:1.8;display:block}.sidebar-footer{display:flex;align-items:center;gap:7px;padding:0 11px;color:#90aa90;font-size:9px;letter-spacing:1px}.status-dot{width:6px;height:6px;background:#9dbe75;border-radius:50%;display:inline-block;flex-shrink:0}
+    .workspace{min-width:0}.app-header{height:82px;padding:0 42px;border-bottom:1px solid #dfe6dc;display:flex;align-items:center;justify-content:space-between;gap:20px;background:#f8faf6}.breadcrumb{font-size:12px;color:#85917f;display:flex;align-items:center;gap:12px}.breadcrumb b{font-weight:500;color:#31523b}.account-actions{display:flex;align-items:center;gap:13px}.account-name{font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.outline-button{border:1px solid #c9d6c1;background:#fffef9;border-radius:8px;padding:10px 15px;font-size:12px;color:var(--ink)}.outline-button:hover{background:#edf3e6}.account-button{display:flex;gap:15px;align-items:center}.arrow{font-size:17px;line-height:1}.desk{width:min(1100px,100%);margin:auto;padding:40px 42px 25px}.desk-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:28px}.overline{font:9px Consolas,monospace;letter-spacing:2px;color:#819177;margin:0 0 12px}.desk-heading h1{font-size:29px;letter-spacing:-1px;font-weight:600;margin:0 0 12px;line-height:1.4}.desk-heading p:not(.overline){font-size:12px;line-height:1.8;color:#788872;margin:0}.desk-heading .quiet-tag{font-size:10px;color:#809075;padding:7px 10px;border:1px solid #d7e1cf;border-radius:5px;white-space:nowrap;margin-bottom:3px}
+    .desk-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:22px;align-items:start}.desk-main{background:#fffefa;border:1px solid #dee5d7;border-radius:14px;overflow:hidden}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:24px 25px 19px;border-bottom:1px solid #e7ecdf}.panel-heading h2{font-size:15px;font-weight:600;margin:0}.panel-heading span{font-size:9px;letter-spacing:1px;color:#9aa58f}.task-row{display:grid;grid-template-columns:43px minmax(0,1fr) 18px;align-items:center;gap:15px;width:100%;border:0;border-bottom:1px solid #e7ecdf;background:transparent;padding:25px;text-align:left;color:var(--ink)}.task-row:last-child{border-bottom:0}.task-row:hover{background:#f2f6eb}.task-icon{display:grid;place-items:center;width:43px;height:43px;border:1px solid #dbe5cf;background:#f0f5e8;border-radius:10px;font-size:22px;font-family:Consolas,monospace;color:#668250}.task-row strong{display:block;font-size:15px;font-weight:550;margin-bottom:8px}.task-row .task-description{display:block;font-size:11px;color:#819074;line-height:1.7}.task-arrow{color:#98aa85;font-size:19px}.context-note{border:1px dashed #d0dcc5;border-radius:11px;margin-top:18px;padding:18px 20px;display:flex;align-items:start;gap:12px;color:#839075;font-size:11px;line-height:1.85}.context-note span{color:#75935d;font-size:16px}.context-note p{margin:0}.context-note strong{color:#5b7550;font-weight:550}
+    .desk-aside{display:flex;flex-direction:column;gap:20px}.assistant-card{padding:23px 24px 25px;border-radius:14px;background:#234d3c;color:#f2f7e9;position:relative;overflow:hidden}.assistant-card:after{content:"";position:absolute;width:124px;height:124px;background:#a9cc6b12;right:-54px;top:-60px;transform:rotate(35deg);border-radius:20px}.assistant-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:23px}.assistant-card-top p{font:9px Consolas,monospace;color:#a6bd9d;letter-spacing:1px;margin:0}.desk-frog{display:grid;place-items:center;width:64px;height:57px;background:#d7f58a17;border-radius:12px;border:1px solid #d7f58a21}.assistant-card h2{font-size:21px;font-weight:500;margin:0 0 13px;letter-spacing:.5px}.assistant-card>p{font-size:12px;color:#b9cdb0;line-height:1.9;margin:0 0 22px;max-width:240px}.primary-button{border:0;border-radius:9px;background:var(--ink);color:#fff;padding:13px 19px;display:inline-flex;align-items:center;justify-content:center;gap:24px;font-size:12px;text-decoration:none}.primary-button:hover{background:#315c46}.assistant-card .primary-button{width:100%;justify-content:space-between;background:#d7f58a;color:#23432b}.assistant-card .primary-button:hover{background:#e4ffab}.assistant-card .availability{font-size:9px;color:#a7be9a;display:flex;align-items:center;gap:7px;margin:12px 0 0}.guide-panel{padding:21px 23px;background:#e9eee2;border:1px solid #d9e2cf;border-radius:13px}.guide-panel h2{font-size:13px;font-weight:550;margin:0 0 15px}.guide-panel details{font-size:11px;border-bottom:1px solid #d3ddc7;padding:13px 0;color:#698059}.guide-panel details:last-child{border-bottom:0;padding-bottom:0}.guide-panel summary{cursor:pointer;color:#506a43;line-height:1.7}.guide-panel details p{font-size:11px;line-height:1.9;margin:10px 0 0;color:#7a8b6c}.workspace-footer{margin-top:36px;border-top:1px solid #dae2d2;padding-top:17px;color:#8d9984;font-size:10px;line-height:1.8;display:flex;align-items:start;gap:10px}.workspace-footer .footer-label{border:1px solid #d1dcc4;border-radius:4px;font-size:8px;padding:1px 5px;white-space:nowrap;color:#7b8c6c}.workspace-footer p{margin:0;max-width:630px}.skip-link{position:fixed;left:20px;top:10px;transform:translateY(-200%);z-index:50;padding:12px;background:#d7f58a;color:#19372f;border-radius:8px}.skip-link:focus{transform:none}
+    .assistant-launcher{position:fixed;right:34px;bottom:25px;z-index:20;display:flex;align-items:center;gap:9px;padding:0;border:0;background:transparent;color:var(--ink)}.launcher-label{font-size:11px;background:#f9fcf6;border:1px solid #d4dfcc;border-radius:20px;padding:8px 13px;box-shadow:0 5px 18px #1c392b08}.frog-plinth{width:76px;height:76px;background:#e7efdd;border:1px solid #cddbbe;border-radius:26px;display:grid;place-items:center;box-shadow:0 8px 22px #21432c12;transition:transform .2s}.assistant-launcher:hover .frog-plinth{transform:translateY(-5px)}.pixel-frog{display:grid;grid-template-columns:repeat(14,4px);grid-template-rows:repeat(10,4px);width:56px;height:40px;image-rendering:pixelated}.pixel-frog i{background:var(--pixel-color);display:block}.frog-small{transform:scale(.6);transform-origin:center;width:56px;flex-shrink:0}
+    .chat-panel{position:fixed;right:30px;bottom:25px;width:420px;height:min(660px,calc(100dvh - 48px));max-height:calc(100dvh - 48px);border:1px solid #cbd6c9;border-radius:23px;background:#fafcf9;box-shadow:0 24px 90px #16352c26;z-index:30;display:flex;flex-direction:column;overflow:hidden;animation:panel-in .25s ease-out}.chat-head{background:#193d32;color:#f0f6e9;padding:18px 19px 17px;display:flex;align-items:center;justify-content:space-between;gap:10px}.assistant-identity{display:flex;align-items:center;gap:8px}.chat-frog{width:44px;overflow:hidden;display:flex;justify-content:center}.assistant-identity h2{font-size:15px;margin:0 0 5px;font-weight:550;letter-spacing:1px}.assistant-identity p{font-size:10px;color:#bbcebb;margin:0;display:flex;align-items:center;gap:5px}.assistant-identity .status-dot{background:#d7f58a;width:4px;height:4px}.chat-controls{display:flex;gap:7px}.icon-button{display:grid;place-items:center;width:30px;height:30px;border:1px solid #ffffff24;background:transparent;color:#dbe8d6;border-radius:9px;font-size:18px}.icon-button:hover{background:#ffffff15}.conversation-bar{display:flex;align-items:center;justify-content:space-between;padding:11px 19px;border-bottom:1px solid #e4e9df;font-size:10px;color:#84917f;gap:10px}.conversation-bar button{border:0;padding:0;background:transparent;color:#47683d;font-size:11px}.conversation-bar button:disabled{opacity:.5}.chat-messages{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:23px 19px 12px;scrollbar-width:thin;scrollbar-color:#ced9c8 transparent}.welcome-note{font-size:10px;letter-spacing:1px;color:#96a18e;text-align:center;margin:0 0 24px}.message{margin-bottom:18px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}.message-label{font-size:10px;color:#8a9784;padding:0 3px}.message-bubble{padding:13px 15px;border-radius:3px 15px 15px 15px;border:1px solid #e1e8db;background:#f0f4eb;color:#314a34;font-size:13px;line-height:1.9;max-width:94%;white-space:pre-wrap;overflow-wrap:anywhere}.message-bubble a{color:#345e36;text-decoration:underline;text-underline-offset:3px}.message-bubble strong{font-weight:650}.message.user{align-items:flex-end}.message.user .message-bubble{border-radius:15px 3px 15px 15px;background:#244f40;color:#f9fff1;border-color:#244f40}.message.system .message-bubble{background:#f7f2e6;border-color:#e8dfc9;color:#786543;font-size:12px;max-width:100%;border-radius:10px}.quick-questions{display:flex;gap:7px;flex-wrap:wrap;margin:-3px 0 20px}.quick-questions button{font-size:11px;padding:8px 11px;border:1px solid #d8e2cc;background:#fffef8;color:#5a7546;border-radius:20px}.quick-questions button:hover{background:#eaf2df}.chat-status{padding:0 21px 8px;min-height:24px;font-size:11px;line-height:1.6;color:#7e9072}.chat-status.error{color:#965e41}.composer-wrap{border-top:1px solid #e1e7dc;padding:12px 15px 10px;background:#fffefa}.chat-form{display:flex;align-items:flex-end;gap:9px;border:1px solid #dce3d4;border-radius:13px;padding:8px 8px 8px 13px;background:#fafcf7}.chat-form:focus-within{border-color:#91aa7e}.chat-form textarea{flex:1;resize:none;background:transparent;border:0;padding:5px 0;min-height:36px;max-height:96px;line-height:1.6;font-size:12px;color:var(--ink);width:0;outline:none}.chat-form textarea:focus-visible{outline:2px solid #709b54;outline-offset:2px}.send-button{border:0;border-radius:9px;width:34px;height:34px;background:var(--lime);color:var(--ink);font-size:20px;flex-shrink:0}.composer-note{margin:8px 0 0;text-align:center;font-size:9px;color:#96a08d;line-height:1.6}.typing{display:inline-flex;align-items:center;gap:4px;margin-right:7px}.typing i{width:3px;height:3px;background:#719453;border-radius:50%;animation:dot 1.1s infinite}.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+    .login-dialog{border:1px solid #d8e1d0;border-radius:23px;width:min(420px,calc(100% - 32px));padding:30px;background:#fafcf7;color:var(--ink);box-shadow:0 30px 120px #183e2e26}.login-dialog::backdrop{background:#18372a60;backdrop-filter:blur(7px)}.dialog-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:27px}.dialog-tag{font-size:10px;letter-spacing:2px;color:#87977c}.dialog-close{border:0;background:#e9efdf;color:var(--ink);border-radius:50%;width:29px;height:29px;font-size:18px}.login-dialog h2{font-size:27px;letter-spacing:-1px;font-weight:600;margin:0 0 10px}.login-intro{font-size:12px;line-height:1.8;color:var(--muted);margin:0 0 24px}.login-dialog label{display:block;font-size:12px;margin:16px 0 8px}.login-dialog input{width:100%;border:1px solid #cfdac5;background:#fffef9;border-radius:10px;padding:12px;font-size:14px;color:var(--ink)}.login-submit{width:100%;margin-top:24px;justify-content:space-between}.login-feedback{font-size:12px;line-height:1.7;min-height:21px;margin:12px 0 0;color:#8e5b40}.login-notice{font-size:10px;color:#8a9881;line-height:1.8;margin:17px 0 0;border-top:1px solid #e0e7d8;padding-top:15px}.page-feedback{font-size:11px;color:#8b643e;min-height:20px;margin:0;position:absolute;right:40px;top:88px;max-width:400px}
+
+    .page-feedback{position:static;max-width:none;min-height:0;padding:0 42px;font-size:11px;line-height:1.8;color:#8b643e;margin:0}.page-feedback:not(:empty){padding-top:14px}
+    @keyframes panel-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes dot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+    @media(min-width:1500px){.desk{padding-top:55px}.desk-heading{margin-bottom:35px}.task-row{padding-block:31px}}
+    @media(max-width:1100px){.app-layout{grid-template-columns:190px minmax(0,1fr)}.sidebar{padding-inline:12px}.app-header{padding-inline:28px}.desk{padding:32px 28px 24px}.desk-grid{grid-template-columns:minmax(0,1.15fr) minmax(245px,1fr);gap:18px}.desk-heading h1{font-size:25px}.quiet-tag{display:none}.task-row{padding:23px 20px;gap:12px}.panel-heading{padding-inline:20px}.assistant-card{padding:21px}.page-feedback{padding-inline:28px}}
+    @media(max-width:900px){.app-layout{grid-template-columns:170px minmax(0,1fr)}.sidebar{padding-top:26px}.brand{padding-inline:9px}.sidebar-nav a,.sidebar-nav button{padding-inline:12px;gap:10px;font-size:12px}.desk-grid{grid-template-columns:1fr}.desk-aside{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.assistant-card>p{font-size:11px}.assistant-card h2{font-size:18px}.assistant-card-top{margin-bottom:16px}.desk-frog{width:55px;height:46px}.desk-frog .pixel-frog{transform:scale(.8)}.assistant-card-top p{font-size:8px}.assistant-card .primary-button{gap:10px;padding:12px;font-size:11px}.guide-panel{padding:21px 17px}.chat-panel{right:20px;bottom:20px}.workspace-footer{padding-bottom:85px}}
+    @media(max-width:650px){.app-layout{display:block}.sidebar{position:relative;top:auto;height:auto;padding:18px 18px 0;gap:22px}.brand{padding:0;gap:10px}.brand-name{font-size:21px}.brand-name small{display:inline-block;margin:0 0 0 10px;font-size:9px;letter-spacing:1px}.brand-mark{width:29px;height:29px;font-size:20px;border-radius:8px}.nav-group-label,.sidebar-note,.sidebar-footer{display:none}.sidebar-nav{flex-direction:row;overflow:auto;gap:5px;scrollbar-width:none}.sidebar-nav a,.sidebar-nav button{flex-shrink:0;width:auto;font-size:11px;padding:12px 11px;border-radius:8px 8px 0 0;gap:6px;white-space:nowrap}.sidebar-nav .active:after{display:none}.nav-symbol{font-size:14px;width:14px}.app-header{height:63px;padding:0 19px;background:#fffefa}.breadcrumb{font-size:10px;gap:7px}.account-name{font-size:10px;max-width:72px}.account-actions{gap:9px}.outline-button{padding:8px 10px;font-size:10px}.account-button{gap:10px}.desk{padding:28px 18px 20px}.desk-heading{margin-bottom:23px}.desk-heading h1{font-size:25px;letter-spacing:-.7px}.desk-heading p:not(.overline){font-size:11px}.overline{font-size:8px;margin-bottom:10px}.desk-grid{gap:18px}.panel-heading{padding:19px}.panel-heading h2{font-size:14px}.panel-heading span{font-size:8px}.task-row{padding:21px 18px;grid-template-columns:37px minmax(0,1fr) 16px;gap:12px}.task-icon{width:37px;height:37px;font-size:19px}.task-row strong{font-size:14px;margin-bottom:6px}.task-row .task-description{font-size:10px}.context-note{padding:15px 16px;font-size:10px;margin-top:15px}.desk-aside{grid-template-columns:1fr}.assistant-card{padding:23px}.assistant-card h2{font-size:21px}.assistant-card>p{font-size:12px;max-width:none;margin-bottom:20px}.assistant-card-top{margin-bottom:19px}.assistant-card-top p{font-size:9px}.desk-frog{width:64px;height:52px}.assistant-card .primary-button{padding:14px 17px;font-size:12px}.guide-panel{padding:21px}.workspace-footer{margin-top:27px;padding-bottom:90px;font-size:9px}.page-feedback{padding-inline:19px;font-size:10px}.assistant-launcher{right:18px;bottom:18px}.frog-plinth{width:66px;height:66px;border-radius:23px}.chat-panel{right:10px;bottom:10px;width:calc(100% - 20px);height:min(690px,calc(100dvh - 20px));max-height:calc(100dvh - 20px);border-radius:20px}.chat-messages{padding-top:18px}.login-dialog{padding:25px}}
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到服务内容</a>
+  <div class="app-layout">
+    <aside class="sidebar" aria-label="服务导航">
+      <a class="brand" href="/" aria-label="栖物服务中心首页"><span class="brand-mark" aria-hidden="true">栖</span><span class="brand-name">栖物<small>CUSTOMER CARE</small></span></a>
+      <div>
+        <p class="nav-group-label">你的服务空间</p>
+        <nav class="sidebar-nav" aria-label="主导航">
+          <a class="active" href="#main" aria-current="page"><span class="nav-symbol" aria-hidden="true">⊞</span>服务总览</a>
+          <button type="button" data-question="帮我查一下我的订单"><span class="nav-symbol" aria-hidden="true">▤</span>订单查询</button>
+          <button type="button" data-question="我想了解退货的条件和流程"><span class="nav-symbol" aria-hidden="true">↶</span>售后办理</button>
+          <button type="button" data-question="我想了解如何转人工处理问题"><span class="nav-symbol" aria-hidden="true">☏</span>人工协助</button>
+        </nav>
+      </div>
+      <div class="sidebar-note"><p>每个问题，<br>都值得被认真对待。</p><span>订单、规则与下一步，<br>在这里慢慢理清。</span></div>
+      <div class="sidebar-footer"><span class="status-dot"></span>栖物 · 顾客服务</div>
+    </aside>
+    <div class="workspace">
+      <header class="app-header">
+        <div class="breadcrumb"><span>顾客服务</span><span aria-hidden="true">/</span><b>服务总览</b></div>
+        <div class="account-actions"><span class="account-name" id="account-name" hidden></span><button class="outline-button account-button" id="account-button" type="button"><span id="account-button-label">登录账户</span><span class="arrow" aria-hidden="true">↗</span></button></div>
+      </header>
+      <p id="page-feedback" class="page-feedback" role="status" aria-live="polite"></p>
+      <main id="main" class="desk">
+        <div class="desk-heading"><div><p class="overline">YOUR SERVICE DESK</p><h1>今天，有什么可以帮你？</h1><p>找到对应的服务，或直接把问题告诉小蛙。</p></div><span class="quiet-tag">有据可查 · 安心沟通</span></div>
+        <div class="desk-grid">
+          <div>
+            <section id="services" class="desk-main" aria-labelledby="services-title">
+              <div class="panel-heading"><h2 id="services-title">选择你要处理的事</h2><span>QUICK ACCESS</span></div>
+              <button class="task-row" type="button" data-question="帮我查一下我的订单"><span class="task-icon" aria-hidden="true">▤</span><span><strong>查看我的订单</strong><span class="task-description">查询订单状态，找到你关心的那一笔。</span></span><span class="task-arrow" aria-hidden="true">→</span></button>
+              <button class="task-row" type="button" data-question="我想了解退货的条件和流程"><span class="task-icon" aria-hidden="true">↶</span><span><strong>退货与售后</strong><span class="task-description">先了解适用规则，再找到办理入口。</span></span><span class="task-arrow" aria-hidden="true">→</span></button>
+              <button class="task-row" type="button" data-question="我想咨询修改收货地址的条件"><span class="task-icon" aria-hidden="true">⌖</span><span><strong>修改收货地址</strong><span class="task-description">说明订单情况，确认是否可以调整。</span></span><span class="task-arrow" aria-hidden="true">→</span></button>
+              <button class="task-row" type="button" data-question="我想了解如何转人工处理问题"><span class="task-icon" aria-hidden="true">☏</span><span><strong>需要人工协助</strong><span class="task-description">整理问题与已知信息，准备人工工单。</span></span><span class="task-arrow" aria-hidden="true">→</span></button>
+            </section>
+            <div class="context-note"><span aria-hidden="true">ⓘ</span><p><strong>先选事项，再一起聊。</strong><br>点击后会在聊天窗准备好问题，你可以补充细节再发送。</p></div>
+          </div>
+          <div class="desk-aside">
+            <section class="assistant-card" aria-labelledby="assistant-card-title">
+              <div class="assistant-card-top"><p>A LITTLE HELP, ANYTIME.</p><div class="desk-frog"><span class="pixel-frog" data-frog aria-hidden="true"></span></div></div>
+              <h2 id="assistant-card-title">不知道从哪开始？</h2><p>不用先把问题分类。<br>小蛙会陪你找到合适的下一步。</p>
+              <button class="primary-button" id="start-chat" type="button">直接和小蛙聊聊 <span class="arrow" aria-hidden="true">↗</span></button><p class="availability"><span class="status-dot"></span>订单查询 · 制度解答 · 办理指引</p>
+            </section>
+            <section class="guide-panel" aria-labelledby="guide-title"><h2 id="guide-title">开始前，你可能想知道</h2>
+              <details><summary>为什么需要登录？</summary><p>登录后才能核验订单归属，查询你本人的订单信息。</p></details>
+              <details><summary>需要提前准备什么？</summary><p>可以提供订单编号、商品名称或遇到的问题。不知道订单号，也可以让小蛙帮你找。</p></details>
+              <details><summary>小蛙能直接退款吗？</summary><p>小蛙提供规则解释与办理入口，不直接执行退款。具体申请由业务系统审核。</p></details>
+            </section>
+          </div>
+        </div>
+        <footer id="about" class="workspace-footer"><span class="footer-label">DEMO</span><p>栖物为虚构商家，使用模拟订单与示例制度。办理入口为演示页面，人工工单尚无真实客服接入。</p></footer>
+      </main>
+    </div>
+  </div>
+
+  <button id="assistant-launcher" class="assistant-launcher" type="button" aria-label="打开小蛙助手" aria-controls="chat-panel" aria-expanded="false"><span class="launcher-label">需要帮忙吗？</span><span class="frog-plinth"><span class="pixel-frog" data-frog aria-hidden="true"></span></span></button>
+
+  <section id="chat-panel" class="chat-panel" aria-labelledby="chat-title" hidden>
+    <header class="chat-head"><div class="assistant-identity"><div class="chat-frog"><span class="pixel-frog frog-small" data-frog aria-hidden="true"></span></div><div><h2 id="chat-title">小蛙 · 服务助手</h2><p><span class="status-dot"></span>陪你理清每一个下一步</p></div></div><div class="chat-controls"><button id="close-chat" class="icon-button" type="button" aria-label="收起聊天窗口">−</button></div></header>
+    <div class="conversation-bar"><span id="conversation-label">从一个问题开始</span><div style="display:flex;gap:16px"><button id="chat-account" type="button">登录</button><button id="new-chat" type="button">＋ 新会话</button></div></div>
+    <div id="chat-messages" class="chat-messages" role="log" aria-label="聊天记录" aria-live="polite" aria-relevant="additions"></div>
+    <div id="chat-status" class="chat-status" role="status" aria-live="polite"></div>
+    <div class="composer-wrap"><form id="chat-form" class="chat-form"><label for="question" hidden>输入问题</label><textarea id="question" name="question" rows="1" maxlength="4000" placeholder="说说你想了解的事…" enterkeyhint="send"></textarea><button id="send-button" class="send-button" type="submit" aria-label="发送问题">↑</button></form><p id="composer-note" class="composer-note">登录后可查询本人订单 · Enter 发送，Shift + Enter 换行</p></div>
+  </section>
+
+  <dialog id="login-dialog" class="login-dialog" aria-labelledby="login-title" aria-describedby="login-intro">
+    <div class="dialog-top"><span class="dialog-tag">YOUR OWN LITTLE SPACE</span><button id="close-login" class="dialog-close" type="button" aria-label="关闭登录窗口">×</button></div>
+    <h2 id="login-title">欢迎回来。</h2><p id="login-intro" class="login-intro">登录后，小蛙就能帮你查看自己的订单了。</p>
+    <form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" maxlength="100" required placeholder="输入你的用户名"><label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入密码"><button id="login-button" class="primary-button login-submit" type="submit">登录并继续 <span aria-hidden="true">↗</span></button><p id="login-feedback" class="login-feedback" role="status" aria-live="polite"></p></form>
+    <p class="login-notice">登录状态仅保留在当前页面，刷新后需要重新登录。请使用本项目的演示账号。</p>
+  </dialog>
+
+  <script>
+    "use strict";
+    const element = (id) => document.getElementById(id);
+
+    // 这些变量属于当前页面。不会写入 localStorage，也不会交给大模型。
+    let accessToken = "";
+    let conversationId = null;
+    let currentUsername = "";
+    let chatBusy = false;
+    let loginBusy = false;
+    let logoutBusy = false;
+    let loginOpener = null;
+
+    // 原生像素小蛙：不用外部图片或字体，请求页面后就能显示。
+    const frogRows = ["..GG......GG..", ".GGGG....GGGG.", ".GWWG....GWWG.", ".GWKG....GWKG.", ".GGGGGGGGGGGG.", "GGGGGGGGGGGGGG", "GGGGKGGGGKGGGG", ".GGGGKKKKGGGG.", "..GGGGGGGGGG..", ".GGG......GGG."];
+    const frogColors = { G: "#8db762", W: "#fffef1", K: "#24432d" };
+    document.querySelectorAll("[data-frog]").forEach((frog) => {
+      frogRows.join("").split("").forEach((pixel) => {
+        const tile = document.createElement("i");
+        tile.style.setProperty("--pixel-color", frogColors[pixel] || "transparent");
+        frog.append(tile);
+      });
+    });
+
+    function chatStatus(text = "", error = false, waiting = false) {
+      const status = element("chat-status");
+      status.replaceChildren();
+      if (waiting) {
+        const dots = document.createElement("span");
+        dots.className = "typing";
+        dots.setAttribute("aria-hidden", "true");
+        for (let i = 0; i < 3; i++) dots.append(document.createElement("i"));
+        status.append(dots);
+      }
+      status.append(document.createTextNode(text));
+      status.classList.toggle("error", error);
+    }
+
+    function updateControls() {
+      const locked = chatBusy || loginBusy || logoutBusy;
+      element("account-name").hidden = !accessToken;
+      element("account-name").textContent = currentUsername ? `你好，${currentUsername}` : "";
+      element("account-button-label").textContent = accessToken ? "退出登录" : "登录账户";
+      element("account-button").disabled = locked;
+      element("chat-account").disabled = locked;
+      element("chat-account").textContent = accessToken ? "退出登录" : "登录";
+      element("new-chat").disabled = locked;
+      element("send-button").disabled = locked;
+      element("question").disabled = locked;
+      element("login-button").disabled = locked;
+      element("close-login").disabled = loginBusy;
+      element("username").disabled = loginBusy;
+      element("password").disabled = loginBusy;
+      document.querySelectorAll("[data-question]").forEach((button) => { button.disabled = locked; });
+      element("chat-messages").setAttribute("aria-busy", String(chatBusy));
+      element("conversation-label").textContent = conversationId ? "当前会话 · 继续聊聊" : "从一个问题开始";
+      element("composer-note").textContent = accessToken
+        ? "回答供参考，办理以实际审核为准 · 不直接执行退款"
+        : "登录后可查询本人订单 · Enter 发送，Shift + Enter 换行";
+    }
+
+    // 把回答作为文本显示；仅识别加粗与安全链接，不执行模型返回的 HTML。
+    function renderAnswer(target, text) {
+      const pattern = /\[([^\]\n]+)\]\(([^\s)]+)\)|(https?:\/\/[^\s<>]+)|\*\*([^*\n]+)\*\*/g;
+      let offset = 0;
+      for (const match of text.matchAll(pattern)) {
+        target.append(document.createTextNode(text.slice(offset, match.index)));
+        if (match[4]) {
+          const strong = document.createElement("strong");
+          strong.textContent = match[4];
+          target.append(strong);
+        } else {
+          const raw = match[2] || match[3];
+          const href = match[3] ? raw.replace(/[。，；！？，、）)]+$/u, "") : raw;
+          let url;
+          try { url = new URL(href, window.location.origin); } catch (_) { url = null; }
+          if (url && ["http:", "https:"].includes(url.protocol)) {
+            const link = document.createElement("a");
+            link.href = url.href;
+            link.textContent = match[1] || href;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            target.append(link);
+            if (match[3]) target.append(document.createTextNode(raw.slice(href.length)));
+          } else target.append(document.createTextNode(match[0]));
+        }
+        offset = match.index + match[0].length;
+      }
+      target.append(document.createTextNode(text.slice(offset)));
+    }
+
+    function addMessage(role, text) {
+      const message = document.createElement("div");
+      message.className = `message ${role}`;
+      const label = document.createElement("span");
+      label.className = "message-label";
+      label.textContent = role === "user" ? "你" : role === "system" ? "服务提示" : "小蛙";
+      const bubble = document.createElement("div");
+      bubble.className = "message-bubble";
+      if (role === "assistant") renderAnswer(bubble, text);
+      else bubble.textContent = text;
+      message.append(label, bubble);
+      element("chat-messages").append(message);
+      element("chat-messages").scrollTop = element("chat-messages").scrollHeight;
+    }
+
+    function resetConversation() {
+      conversationId = null;
+      element("chat-messages").replaceChildren();
+      const note = document.createElement("p");
+      note.className = "welcome-note";
+      note.textContent = "一点小帮助，让事情简单一点";
+      element("chat-messages").append(note);
+      addMessage("assistant", "嗨，我是小蛙。🐸\n可以帮你查询订单、了解售后规则，或整理需要人工协助的问题。\n想从哪件事聊起？");
+      const shortcuts = document.createElement("div");
+      shortcuts.className = "quick-questions";
+      ["查查我的订单", "退货有什么条件？"].forEach((text) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.question = text;
+        button.textContent = text;
+        shortcuts.append(button);
+      });
+      element("chat-messages").append(shortcuts);
+      chatStatus();
+      updateControls();
+    }
+
+    function openChat() {
+      element("chat-panel").hidden = false;
+      element("assistant-launcher").hidden = true;
+      element("assistant-launcher").setAttribute("aria-expanded", "true");
+      if (!chatBusy) element("question").focus();
+    }
+
+    function openLogin() {
+      if (chatBusy || loginBusy || logoutBusy) return;
+      loginOpener = document.activeElement;
+      element("login-feedback").textContent = "";
+      element("password").value = "";
+      if (!element("login-dialog").open) element("login-dialog").showModal();
+      element("username").focus();
+    }
+
+    function clearLogin() {
+      accessToken = "";
+      currentUsername = "";
+      element("question").value = "";
+      element("password").value = "";
+      resetConversation();
+    }
+
+    element("start-chat").addEventListener("click", openChat);
+    element("assistant-launcher").addEventListener("click", openChat);
+    element("chat-account").addEventListener("click", () => element("account-button").click());
+    element("close-chat").addEventListener("click", () => {
+      element("chat-panel").hidden = true;
+      element("assistant-launcher").hidden = false;
+      element("assistant-launcher").setAttribute("aria-expanded", "false");
+      element("assistant-launcher").focus();
+    });
+    element("new-chat").addEventListener("click", () => {
+      if (chatBusy || loginBusy || logoutBusy) return;
+      resetConversation();
+      element("question").value = "";
+      chatStatus("已开始新会话，登录状态保留。");
+      element("question").focus();
+    });
+    document.addEventListener("click", (event) => {
+      const shortcut = event.target.closest("[data-question]");
+      if (!shortcut || shortcut.disabled || chatBusy || loginBusy || logoutBusy) return;
+      openChat();
+      element("question").value = shortcut.dataset.question;
+      element("question").focus();
+    });
+
+    element("close-login").addEventListener("click", () => {
+      if (!loginBusy) element("login-dialog").close();
+    });
+    element("login-dialog").addEventListener("cancel", (event) => {
+      if (loginBusy) event.preventDefault();
+    });
+    element("login-dialog").addEventListener("close", () => {
+      element("password").value = "";
+      if (loginOpener?.isConnected && !loginOpener.disabled) loginOpener.focus();
+    });
+
+    element("login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (chatBusy || loginBusy || logoutBusy) return;
+      const username = element("username").value.trim();
+      const password = element("password").value;
+      if (!username || !password) {
+        element("login-feedback").textContent = "请填写用户名和密码。";
+        return;
+      }
+      loginBusy = true;
+      updateControls();
+      element("login-feedback").textContent = "正在验证登录…";
+      try {
+        const response = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          element("login-feedback").textContent = response.status === 401
+            ? "用户名或密码错误，请重新输入。"
+            : response.status === 429 ? "登录过于频繁，请稍后再试。" : "暂时无法登录，请稍后再试。";
+          return;
+        }
+        const result = await response.json();
+        if (typeof result.access_token !== "string" || !result.access_token || typeof result.username !== "string") throw new Error("Invalid login response");
+        accessToken = result.access_token;
+        currentUsername = result.username;
+        resetConversation();
+        element("page-feedback").textContent = "";
+        element("login-dialog").close();
+        openChat();
+        chatStatus("登录成功，可以开始提问了。");
+      } catch (_) {
+        element("login-feedback").textContent = "网络或响应异常，暂时无法登录，请稍后再试。";
+      } finally {
+        element("password").value = "";
+        loginBusy = false;
+        updateControls();
+        if (!element("login-dialog").open && !element("chat-panel").hidden) element("question").focus();
+      }
+    });
+
+    element("account-button").addEventListener("click", async () => {
+      if (chatBusy || loginBusy || logoutBusy) return;
+      if (!accessToken) { openLogin(); return; }
+      logoutBusy = true;
+      updateControls();
+      element("page-feedback").textContent = "正在退出登录…";
+      try {
+        const response = await fetch("/logout", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+        if (response.ok || response.status === 401) {
+          clearLogin();
+          element("page-feedback").textContent = "已退出登录，当前页面的聊天记录已清空。";
+          chatStatus("已退出登录，请登录后再提问。");
+        } else element("page-feedback").textContent = "退出未成功，请稍后重试。";
+      } catch (_) { element("page-feedback").textContent = "网络异常，退出未确认，请稍后重试。"; }
+      finally { logoutBusy = false; updateControls(); }
+    });
+
+    element("chat-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (chatBusy || loginBusy || logoutBusy) return;
+      const question = element("question").value.trim();
+      if (!question) { chatStatus("先写下你的问题吧。"); return; }
+      if (!accessToken) { openLogin(); return; }
+      chatBusy = true;
+      addMessage("user", question);
+      element("question").value = "";
+      updateControls();
+      chatStatus("小蛙正在处理，请稍等…", false, true);
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ question, conversation_id: conversationId }),
+          cache: "no-store",
+        });
+        if (response.status === 401) {
+          clearLogin();
+          addMessage("system", "登录已失效，请重新登录。为保护账号信息，当前页面的旧聊天已清空。");
+          chatStatus("请点击聊天窗顶部的“登录”重新登录。", true);
+          return;
+        }
+        if (response.status === 404) {
+          conversationId = null;
+          addMessage("system", "原会话不存在或不可访问。下次提问将开始新会话。");
+          chatStatus("请重新描述问题。", true);
+          return;
+        }
+        if (response.status === 422 || response.status === 429) {
+          chatStatus(response.status === 422 ? "问题未通过校验，请修改后再发送。" : "请求过于频繁，请稍后再试。", true);
+          element("question").value = question;
+          return;
+        }
+        if (!response.ok) throw new Error("Chat service error");
+        const result = await response.json();
+        if (typeof result.answer !== "string" || typeof result.conversation_id !== "string" || !result.conversation_id) throw new Error("Invalid chat response");
+        conversationId = result.conversation_id;
+        addMessage("assistant", result.answer || "本轮没有返回文字回答，请稍后再试。");
+        chatStatus();
+      } catch (_) {
+        // 写操作可能已经成功；不自动重发，也不继续可能残缺的旧会话。
+        conversationId = null;
+        addMessage("system", "本轮未收到完整答复，未自动重试。如涉及工单创建，请先核对是否已保存，避免重复提交。下次提问将开始新会话。");
+        chatStatus("网络或服务异常，请稍后再试。", true);
+      } finally {
+        chatBusy = false;
+        updateControls();
+        if (!element("chat-panel").hidden) element("question").focus();
+      }
+    });
+
+    element("question").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        element("chat-form").requestSubmit();
+      }
+    });
+    resetConversation();
+  </script>
+</body>
+</html>

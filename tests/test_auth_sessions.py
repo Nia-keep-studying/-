@@ -58,6 +58,19 @@ class AuthSessionTests(unittest.TestCase):
     def headers(token):
         return {"Authorization": f"Bearer {token}"}
 
+    def test_homepage_serves_public_shell_without_running_agent(self):
+        with patch("agent.langchain_agent_demo.run_chat_turn") as run:
+            response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertIn('id="login-form"', response.text)
+        self.assertIn('id="chat-form"', response.text)
+        run.assert_not_called()
+        with Session(self.engine) as session:
+            self.assertEqual(session.exec(select(server.ChatConversation)).all(), [])
+            self.assertEqual(session.exec(select(server.LoginSession)).all(), [])
+
     def test_chat_runs_tools_and_keeps_history_only_in_the_selected_thread(self):
         from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
         from agent.langchain_agent_demo import build_agent

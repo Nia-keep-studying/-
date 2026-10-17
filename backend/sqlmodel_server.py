@@ -345,3 +345,11 @@ def chat(
         "conversation_id":conversation_id,
         "answer":answer,
     }
+
+@app.get("/",response_class=FileResponse,include_in_schema=False)
+def chat_page():
+    return FileResponse(
+        path=PROJECT_ROOT / "web" / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control":"no-store"},
+    )
