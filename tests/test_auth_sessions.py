@@ -4,8 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from contextlib import ExitStack
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, create_engine, select
@@ -28,8 +29,10 @@ class AuthSessionTests(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         self.addCleanup(self.engine.dispose)
-        self.enterContext(patch.object(server, "database_file", database))
         self.enterContext(patch.object(server, "engine", self.engine))
+        # Offline checks must not open the real PostgreSQL checkpoint connection.
+        checkpoint_factory = self.enterContext(patch.object(server.PostgresSaver, "from_conn_string"))
+        self.checkpointer = checkpoint_factory.return_value.__enter__.return_value
         # Lifespan now prepares the Agent; offline checks must never load real models.
         with patch("agent.langchain_agent_demo.initialize_agent", return_value=object()) as initialize:
             self.client = self.enterContext(TestClient(server.app))
@@ -122,7 +125,7 @@ class AuthSessionTests(unittest.TestCase):
             self.assertNotEqual(fresh.json()["conversation_id"], conversation_id)
             self.assertFalse(any(isinstance(m, HumanMessage) and m.content == question for m in model_inputs[3]))
 
-        self.initialize_agent.assert_called_once_with()
+        self.initialize_agent.assert_called_once_with(checkpointer=self.checkpointer)
         with Session(self.engine) as session:
             conversations = session.exec(select(server.ChatConversation)).all()
             self.assertEqual(len(conversations), 2)
@@ -233,7 +236,100 @@ class AuthSessionTests(unittest.TestCase):
             ("POST", "/login"), ("GET", "/me"), ("POST", "/logout"),
             ("GET", "/orders"), ("GET", "/orders/{order_id}"),
             ("POST", "/human-tickets"), ("POST", "/chat"),
+            ("GET", "/conversations"),
+            ("GET", "/conversations/{conversation_id}/messages"),
         })
+
+    def test_conversation_list_is_owned_ordered_and_paginated(self):
+        with Session(self.engine) as session:
+            session.add_all([
+                server.ChatConversation(conversation_id="alice-old", user_id="U1001", created_at=10),
+                server.ChatConversation(conversation_id="alice-a", user_id="U1001", created_at=20),
+                server.ChatConversation(conversation_id="alice-z", user_id="U1001", created_at=20),
+                server.ChatConversation(conversation_id="bob-new", user_id="U1002", created_at=30),
+            ])
+            session.commit()
+        alice = self.headers(self.login())
+        with patch.object(server.app.state, "agent", Mock()) as agent:
+            response = self.client.get("/conversations", headers=alice)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {
+                "conversations": [
+                    {"conversation_id": "alice-z", "created_at": 20},
+                    {"conversation_id": "alice-a", "created_at": 20},
+                    {"conversation_id": "alice-old", "created_at": 10},
+                ], "offset": 0, "limit": 20,
+            })
+            page = self.client.get("/conversations?offset=1&limit=1", headers=alice)
+            self.assertEqual(page.json(), {
+                "conversations": [{"conversation_id": "alice-a", "created_at": 20}],
+                "offset": 1, "limit": 1,
+            })
+            self.assertEqual(self.client.get("/conversations?offset=3", headers=alice).json()["conversations"], [])
+            bob = self.client.get("/conversations", headers=self.headers(self.login("bob")))
+            self.assertEqual(bob.json()["conversations"], [{"conversation_id": "bob-new", "created_at": 30}])
+            for query in ["offset=-1", "limit=0", "limit=101"]:
+                self.assertEqual(self.client.get("/conversations?" + query, headers=alice).status_code, 422)
+            for headers in [{}, self.headers("invalid-token")]:
+                self.assertEqual(self.client.get("/conversations", headers=headers).status_code, 401)
+            agent.get_state.assert_not_called()
+            agent.invoke.assert_not_called()
+
+    def test_conversation_history_returns_visible_text_without_running_agent(self):
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+        with Session(self.engine) as session:
+            session.add(server.ChatConversation(conversation_id="alice-history", user_id="U1001", created_at=10))
+            session.commit()
+        token = self.login()
+        agent = Mock()
+        agent.get_state.return_value = SimpleNamespace(values={"messages": [
+            SystemMessage(content="private system instructions"),
+            HumanMessage(content="查询订单 A1001"),
+            AIMessage(content="internal tool preface", tool_calls=[{
+                "name": "query_order", "args": {"order_id": "A1001"},
+                "id": "history-call", "type": "tool_call",
+            }]),
+            ToolMessage(content="private tool payload", tool_call_id="history-call"),
+            AIMessage(content=[
+                {"type": "reasoning", "reasoning": "private reasoning"},
+                {"type": "text", "text": "订单 A1001 已发货。"},
+            ]),
+            AIMessage(content=""),
+        ]})
+        with patch.object(server.app.state, "agent", agent):
+            response = self.client.get("/conversations/alice-history/messages", headers=self.headers(token))
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {
+                "conversation_id": "alice-history", "messages": [
+                    {"role": "user", "content": "查询订单 A1001"},
+                    {"role": "assistant", "content": "订单 A1001 已发货。"},
+                ],
+            })
+            agent.get_state.assert_called_once_with({"configurable": {"thread_id": "alice-history"}})
+            agent.get_state.return_value = SimpleNamespace(values={})
+            empty = self.client.get("/conversations/alice-history/messages", headers=self.headers(token))
+            self.assertEqual(empty.json(), {"conversation_id": "alice-history", "messages": []})
+            agent.invoke.assert_not_called()
+
+    def test_conversation_history_rejects_access_before_reading_checkpoints(self):
+        with Session(self.engine) as session:
+            session.add(server.ChatConversation(conversation_id="alice-private", user_id="U1001", created_at=10))
+            session.commit()
+        alice, bob = self.login(), self.login("bob")
+        with patch.object(server.app.state, "agent", Mock()) as agent:
+            for headers, conversation_id, status in [
+                (self.headers(bob), "alice-private", 404),
+                (self.headers(alice), "missing-conversation", 404),
+                ({}, "alice-private", 401),
+                (self.headers("invalid-token"), "alice-private", 401),
+            ]:
+                with self.subTest(status=status, conversation_id=conversation_id):
+                    response = self.client.get(f"/conversations/{conversation_id}/messages", headers=headers)
+                    self.assertEqual(response.status_code, status)
+            self.client.post("/logout", headers=self.headers(alice))
+            self.assertEqual(self.client.get("/conversations/alice-private/messages", headers=self.headers(alice)).status_code, 401)
+            agent.get_state.assert_not_called()
+            agent.invoke.assert_not_called()
 
     def ticket_payload(self, **changes):
         payload = {"summary": "订单售后条件无法确认", "reason": "用户要求人工",

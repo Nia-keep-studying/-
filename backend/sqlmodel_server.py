@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field,create_engine,Session,select
-from settings import DATABASE_PATH,LOGIN_SESSION_TTL_SECONDS,PROJECT_ROOT
+from settings import DATABASE_URL,LOGIN_SESSION_TTL_SECONDS,PROJECT_ROOT,CHECKPOINT_DATABASE_URL
 from fastapi import FastAPI,HTTPException,Query,Response,Depends,Request
 from typing import Literal
 from contextlib import asynccontextmanager
@@ -7,6 +7,7 @@ from pwdlib import PasswordHash
 from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from uuid import uuid4
+from langgraph.checkpoint.postgres import PostgresSaver
 
 import secrets
 import hashlib
@@ -88,20 +89,24 @@ class ChatRequest(SQLModel):
         max_length=100,
     )
 
-database_file = DATABASE_PATH
-database_url = f"sqlite:///{database_file.as_posix()}"
-engine = create_engine(database_url, echo=False, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL,echo=True)
 
 def create_db_and_tables():
-    database_file.parent.mkdir(parents=True, exist_ok=True)
     SQLModel.metadata.create_all(engine)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     from agent.langchain_agent_demo import initialize_agent
     create_db_and_tables()
-    application.state.agent = initialize_agent()
-    yield
+
+    with PostgresSaver.from_conn_string(
+        CHECKPOINT_DATABASE_URL
+    ) as checkpointer:
+        checkpointer.setup()
+
+        application.state.agent = initialize_agent(checkpointer=checkpointer)
+
+        yield
 
 app = FastAPI(lifespan=lifespan)
 
@@ -353,3 +358,86 @@ def chat_page():
         media_type="text/html",
         headers={"Cache-Control":"no-store"},
     )
+
+@app.get("/conversations")
+def list_conversations(
+    current_user:User = Depends(get_current_user),
+    session:Session = Depends(get_session),
+    offset:int = Query(default=0,ge=0),
+    limit:int = Query(default=20,ge=1,le=100),
+):
+    statement = (
+        select(ChatConversation)
+        .where(ChatConversation.user_id==current_user.user_id)
+        .order_by(
+            ChatConversation.created_at.desc(),
+            ChatConversation.conversation_id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+    )
+
+    conversations = session.exec(statement).all()
+
+    return {
+        "conversations":[
+            {
+                "conversation_id":conversation.conversation_id,
+                "created_at":conversation.created_at,
+            }
+            for conversation in conversations
+        ],
+        "offset":offset,
+        "limit":limit,
+    }
+
+@app.get("/conversations/{conversation_id}/messages")
+def read_conversation_messages(
+    conversation_id:str,
+    request:Request,
+    current_user:User = Depends(get_current_user),
+    session:Session = Depends(get_session),
+):
+    statement = select(ChatConversation).where(
+        ChatConversation.user_id == current_user.user_id,
+        ChatConversation.conversation_id == conversation_id,
+    )
+    conversation = session.exec(statement).first()
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="会话不存在或不可访问",
+        )
+
+    session.close()
+
+    agent = request.app.state.agent
+    config = {
+        "configurable":{"thread_id":conversation_id}
+    }
+    state = agent.get_state(config)
+
+    visible_messages = []
+
+    for message in state.values.get("messages",[]):
+        if message.type == "human":
+            role = "user"
+        elif message.type == "ai" and not message.tool_calls:
+            role = "assistant"
+        else:
+            continue
+
+        content = str(message.text)
+        if not content:
+            continue
+
+        visible_messages.append({
+            "role":role,
+            "content":content,
+        })
+
+    return {
+        "conversation_id":conversation_id,
+        "messages":visible_messages,
+    }

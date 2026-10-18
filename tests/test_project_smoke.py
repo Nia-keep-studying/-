@@ -59,7 +59,7 @@ class ProjectSmokeTests(unittest.TestCase):
                 connect_args={"check_same_thread": False},
             )
             try:
-                with patch.object(server, "database_file", database), patch.object(server, "engine", engine), patch.object(seed_demo, "engine", engine):
+                with patch.object(server, "engine", engine), patch.object(seed_demo, "engine", engine):
                     seed_demo.seed_demo()
                     seed_demo.seed_demo()
                     with Session(engine) as session:

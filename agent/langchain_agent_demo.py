@@ -25,8 +25,10 @@ class AgentContext:
     """由程序提供的本次执行数据，业务工具从运行时读取凭证。"""
     access_token: str
 
-def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,):
+def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,checkpointer=None):
     """Pass prepared resources explicitly; importing this module does not load models."""
+    if checkpointer is None:
+        checkpointer = InMemorySaver()
     @tool
     def query_order(order_id: str,runtime:ToolRuntime[AgentContext],) -> dict:
         """根据订单编号查询订单信息，比如 A1001。"""
@@ -105,7 +107,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
     return create_agent(
         model=model,
         tools=[query_order, search_policy,query_orders,query_return_entry,create_support_ticket],
-        checkpointer=InMemorySaver(),
+        checkpointer=checkpointer,
         context_schema=AgentContext,
         system_prompt=(
             "你是订单客服助手。"
@@ -196,7 +198,7 @@ def run_chat_turn(agent, question: str, config: dict, context: AgentContext):
     return result["messages"][-1].content
 
 
-def initialize_agent():
+def initialize_agent(checkpointer=None):
     policy_chunks = split_documents(load_documents())
     embedding_model = load_embedding_model()
     policy_chunk_vectors = build_chunk_vectors(policy_chunks, embedding_model)
@@ -209,7 +211,7 @@ def initialize_agent():
         extra_body={"thinking": {"type": "disabled"}},
     )
     return build_agent(
-        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker
+        model, policy_chunks, embedding_model, policy_chunk_vectors, policy_reranker,checkpointer=checkpointer,
     )
 
 

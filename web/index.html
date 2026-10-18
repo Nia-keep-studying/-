@@ -23,6 +23,7 @@
     @media(max-width:1100px){.app-layout{grid-template-columns:190px minmax(0,1fr)}.sidebar{padding-inline:12px}.app-header{padding-inline:28px}.desk{padding:32px 28px 24px}.desk-grid{grid-template-columns:minmax(0,1.15fr) minmax(245px,1fr);gap:18px}.desk-heading h1{font-size:25px}.quiet-tag{display:none}.task-row{padding:23px 20px;gap:12px}.panel-heading{padding-inline:20px}.assistant-card{padding:21px}.page-feedback{padding-inline:28px}}
     @media(max-width:900px){.app-layout{grid-template-columns:170px minmax(0,1fr)}.sidebar{padding-top:26px}.brand{padding-inline:9px}.sidebar-nav a,.sidebar-nav button{padding-inline:12px;gap:10px;font-size:12px}.desk-grid{grid-template-columns:1fr}.desk-aside{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.assistant-card>p{font-size:11px}.assistant-card h2{font-size:18px}.assistant-card-top{margin-bottom:16px}.desk-frog{width:55px;height:46px}.desk-frog .pixel-frog{transform:scale(.8)}.assistant-card-top p{font-size:8px}.assistant-card .primary-button{gap:10px;padding:12px;font-size:11px}.guide-panel{padding:21px 17px}.chat-panel{right:20px;bottom:20px}.workspace-footer{padding-bottom:85px}}
     @media(max-width:650px){.app-layout{display:block}.sidebar{position:relative;top:auto;height:auto;padding:18px 18px 0;gap:22px}.brand{padding:0;gap:10px}.brand-name{font-size:21px}.brand-name small{display:inline-block;margin:0 0 0 10px;font-size:9px;letter-spacing:1px}.brand-mark{width:29px;height:29px;font-size:20px;border-radius:8px}.nav-group-label,.sidebar-note,.sidebar-footer{display:none}.sidebar-nav{flex-direction:row;overflow:auto;gap:5px;scrollbar-width:none}.sidebar-nav a,.sidebar-nav button{flex-shrink:0;width:auto;font-size:11px;padding:12px 11px;border-radius:8px 8px 0 0;gap:6px;white-space:nowrap}.sidebar-nav .active:after{display:none}.nav-symbol{font-size:14px;width:14px}.app-header{height:63px;padding:0 19px;background:#fffefa}.breadcrumb{font-size:10px;gap:7px}.account-name{font-size:10px;max-width:72px}.account-actions{gap:9px}.outline-button{padding:8px 10px;font-size:10px}.account-button{gap:10px}.desk{padding:28px 18px 20px}.desk-heading{margin-bottom:23px}.desk-heading h1{font-size:25px;letter-spacing:-.7px}.desk-heading p:not(.overline){font-size:11px}.overline{font-size:8px;margin-bottom:10px}.desk-grid{gap:18px}.panel-heading{padding:19px}.panel-heading h2{font-size:14px}.panel-heading span{font-size:8px}.task-row{padding:21px 18px;grid-template-columns:37px minmax(0,1fr) 16px;gap:12px}.task-icon{width:37px;height:37px;font-size:19px}.task-row strong{font-size:14px;margin-bottom:6px}.task-row .task-description{font-size:10px}.context-note{padding:15px 16px;font-size:10px;margin-top:15px}.desk-aside{grid-template-columns:1fr}.assistant-card{padding:23px}.assistant-card h2{font-size:21px}.assistant-card>p{font-size:12px;max-width:none;margin-bottom:20px}.assistant-card-top{margin-bottom:19px}.assistant-card-top p{font-size:9px}.desk-frog{width:64px;height:52px}.assistant-card .primary-button{padding:14px 17px;font-size:12px}.guide-panel{padding:21px}.workspace-footer{margin-top:27px;padding-bottom:90px;font-size:9px}.page-feedback{padding-inline:19px;font-size:10px}.assistant-launcher{right:18px;bottom:18px}.frog-plinth{width:66px;height:66px;border-radius:23px}.chat-panel{right:10px;bottom:10px;width:calc(100% - 20px);height:min(690px,calc(100dvh - 20px));max-height:calc(100dvh - 20px);border-radius:20px}.chat-messages{padding-top:18px}.login-dialog{padding:25px}}
+    .conversation-actions{display:flex;gap:13px;align-items:center;flex-shrink:0}.history-panel{flex:1;min-height:0;display:flex;flex-direction:column;background:#f7faf3}.history-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 19px 8px}.history-heading h3{font-size:15px;font-weight:550;margin:0}.history-heading button,.history-pagination button{border:1px solid #d4dfc9;background:#fffef8;color:#496841;border-radius:7px;padding:7px 11px;font-size:11px}.history-feedback{font-size:11px;line-height:1.7;color:#819074;margin:0;padding:0 19px 12px;min-height:30px}.history-feedback.error{color:#965e41}.history-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 13px 10px}.history-item{display:flex;flex-direction:column;gap:7px;text-align:left;border:1px solid #dce5d3;border-radius:11px;padding:14px;width:100%;margin-bottom:9px;background:#fffef9;color:var(--ink);overflow-wrap:anywhere}.history-item:hover{background:#edf4e4;border-color:#a8bd93}.history-item.selected{background:#e8f2d8;border-color:#9cb582}.history-item strong{font-size:12px;font-weight:550}.history-item span{font:10px Consolas,monospace;color:#849177}.history-empty{font-size:12px;color:#7d8e71;line-height:1.9;padding:17px 7px}.history-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 19px;border-top:1px solid #dfe7d6;font-size:10px;color:#839275}.history-pagination span{white-space:nowrap}.history-panel button:disabled{opacity:.5}.conversation-bar>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:480px){.conversation-actions{gap:10px}.conversation-bar{padding:11px 15px}.conversation-bar button{font-size:10px}.history-heading{padding-top:16px}}
   </style>
 </head>
 <body>
@@ -83,17 +84,23 @@
 
   <section id="chat-panel" class="chat-panel" aria-labelledby="chat-title" hidden>
     <header class="chat-head"><div class="assistant-identity"><div class="chat-frog"><span class="pixel-frog frog-small" data-frog aria-hidden="true"></span></div><div><h2 id="chat-title">小蛙 · 服务助手</h2><p><span class="status-dot"></span>陪你理清每一个下一步</p></div></div><div class="chat-controls"><button id="close-chat" class="icon-button" type="button" aria-label="收起聊天窗口">−</button></div></header>
-    <div class="conversation-bar"><span id="conversation-label">从一个问题开始</span><div style="display:flex;gap:16px"><button id="chat-account" type="button">登录</button><button id="new-chat" type="button">＋ 新会话</button></div></div>
+    <div class="conversation-bar"><span id="conversation-label">从一个问题开始</span><div class="conversation-actions"><button id="history-toggle" type="button" aria-controls="history-panel" aria-expanded="false">历史会话</button><button id="new-chat" type="button">＋ 新会话</button><button id="chat-account" type="button">登录</button></div></div>
+    <section id="history-panel" class="history-panel" aria-labelledby="history-title" hidden>
+      <div class="history-heading"><h3 id="history-title">你的会话</h3><button id="history-refresh" type="button">刷新列表</button></div>
+      <p id="history-feedback" class="history-feedback" role="status" aria-live="polite">选择一段会话，继续之前的话题。</p>
+      <div id="history-list" class="history-list" aria-label="本人会话列表" aria-busy="false"></div>
+      <div class="history-pagination"><button id="history-prev" type="button">← 上一页</button><span id="history-page">第 1 页</span><button id="history-next" type="button">下一页 →</button></div>
+    </section>
     <div id="chat-messages" class="chat-messages" role="log" aria-label="聊天记录" aria-live="polite" aria-relevant="additions"></div>
     <div id="chat-status" class="chat-status" role="status" aria-live="polite"></div>
-    <div class="composer-wrap"><form id="chat-form" class="chat-form"><label for="question" hidden>输入问题</label><textarea id="question" name="question" rows="1" maxlength="4000" placeholder="说说你想了解的事…" enterkeyhint="send"></textarea><button id="send-button" class="send-button" type="submit" aria-label="发送问题">↑</button></form><p id="composer-note" class="composer-note">登录后可查询本人订单 · Enter 发送，Shift + Enter 换行</p></div>
+    <div id="composer-wrap" class="composer-wrap"><form id="chat-form" class="chat-form"><label for="question" hidden>输入问题</label><textarea id="question" name="question" rows="1" maxlength="4000" placeholder="说说你想了解的事…" enterkeyhint="send"></textarea><button id="send-button" class="send-button" type="submit" aria-label="发送问题">↑</button></form><p id="composer-note" class="composer-note">登录后可查询本人订单 · Enter 发送，Shift + Enter 换行</p></div>
   </section>
 
   <dialog id="login-dialog" class="login-dialog" aria-labelledby="login-title" aria-describedby="login-intro">
     <div class="dialog-top"><span class="dialog-tag">YOUR OWN LITTLE SPACE</span><button id="close-login" class="dialog-close" type="button" aria-label="关闭登录窗口">×</button></div>
     <h2 id="login-title">欢迎回来。</h2><p id="login-intro" class="login-intro">登录后，小蛙就能帮你查看自己的订单了。</p>
     <form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" maxlength="100" required placeholder="输入你的用户名"><label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入密码"><button id="login-button" class="primary-button login-submit" type="submit">登录并继续 <span aria-hidden="true">↗</span></button><p id="login-feedback" class="login-feedback" role="status" aria-live="polite"></p></form>
-    <p class="login-notice">登录状态仅保留在当前页面，刷新后需要重新登录。请使用本项目的演示账号。</p>
+    <p class="login-notice">刷新后需要重新登录；登录后可从“历史会话”找回之前的对话。请使用本项目的演示账号。</p>
   </dialog>
 
   <script>
@@ -107,7 +114,16 @@
     let chatBusy = false;
     let loginBusy = false;
     let logoutBusy = false;
+    let historyBusy = false;
+    let restoreBusy = false;
+    let historyItems = [];
+    let historyOffset = 0;
+    const historyLimit = 20;
     let loginOpener = null;
+
+    function isBusy() {
+      return chatBusy || loginBusy || logoutBusy || historyBusy || restoreBusy;
+    }
 
     // 原生像素小蛙：不用外部图片或字体，请求页面后就能显示。
     const frogRows = ["..GG......GG..", ".GGGG....GGGG.", ".GWWG....GWWG.", ".GWKG....GWKG.", ".GGGGGGGGGGGG.", "GGGGGGGGGGGGGG", "GGGGKGGGGKGGGG", ".GGGGKKKKGGGG.", "..GGGGGGGGGG..", ".GGG......GGG."];
@@ -135,7 +151,7 @@
     }
 
     function updateControls() {
-      const locked = chatBusy || loginBusy || logoutBusy;
+      const locked = isBusy();
       element("account-name").hidden = !accessToken;
       element("account-name").textContent = currentUsername ? `你好，${currentUsername}` : "";
       element("account-button-label").textContent = accessToken ? "退出登录" : "登录账户";
@@ -143,6 +159,11 @@
       element("chat-account").disabled = locked;
       element("chat-account").textContent = accessToken ? "退出登录" : "登录";
       element("new-chat").disabled = locked;
+      element("history-toggle").disabled = locked;
+      element("history-refresh").disabled = locked || !accessToken;
+      element("history-prev").disabled = locked || !accessToken || historyOffset === 0;
+      element("history-next").disabled = locked || !accessToken || historyItems.length < historyLimit;
+      document.querySelectorAll("[data-conversation-id]").forEach((button) => { button.disabled = locked; });
       element("send-button").disabled = locked;
       element("question").disabled = locked;
       element("login-button").disabled = locked;
@@ -151,7 +172,8 @@
       element("password").disabled = loginBusy;
       document.querySelectorAll("[data-question]").forEach((button) => { button.disabled = locked; });
       element("chat-messages").setAttribute("aria-busy", String(chatBusy));
-      element("conversation-label").textContent = conversationId ? "当前会话 · 继续聊聊" : "从一个问题开始";
+      element("history-list").setAttribute("aria-busy", String(historyBusy || restoreBusy));
+      element("conversation-label").textContent = conversationId ? `会话 · ${conversationId.slice(0, 8)}` : "从一个问题开始";
       element("composer-note").textContent = accessToken
         ? "回答供参考，办理以实际审核为准 · 不直接执行退款"
         : "登录后可查询本人订单 · Enter 发送，Shift + Enter 换行";
@@ -204,6 +226,8 @@
 
     function resetConversation() {
       conversationId = null;
+      showHistory(false);
+      renderConversations();
       element("chat-messages").replaceChildren();
       const note = document.createElement("p");
       note.className = "welcome-note";
@@ -224,15 +248,133 @@
       updateControls();
     }
 
+    function showHistory(show) {
+      element("history-panel").hidden = !show;
+      element("chat-messages").hidden = show;
+      element("chat-status").hidden = show;
+      element("composer-wrap").hidden = show;
+      element("history-toggle").setAttribute("aria-expanded", String(show));
+      element("history-toggle").textContent = show ? "返回聊天" : "历史会话";
+    }
+
+    function historyFeedback(text, error = false) {
+      element("history-feedback").textContent = text;
+      element("history-feedback").classList.toggle("error", error);
+    }
+
+    function renderConversations() {
+      const list = element("history-list");
+      list.replaceChildren();
+      for (const item of historyItems) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "history-item";
+        button.dataset.conversationId = item.conversation_id;
+        button.classList.toggle("selected", item.conversation_id === conversationId);
+        button.setAttribute("aria-current", String(item.conversation_id === conversationId));
+        button.disabled = isBusy();
+        const title = document.createElement("strong");
+        title.textContent = new Date(item.created_at * 1000).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const label = document.createElement("span");
+        label.textContent = `会话 ${item.conversation_id.slice(0, 8)}${item.conversation_id === conversationId ? " · 当前" : ""}`;
+        button.append(title, label);
+        button.addEventListener("click", () => restoreConversation(item.conversation_id));
+        list.append(button);
+      }
+      if (!historyItems.length) {
+        const empty = document.createElement("p");
+        empty.className = "history-empty";
+        empty.textContent = historyOffset ? "这一页没有更多会话，可以返回上一页。" : "还没有历史会话。点击“新会话”，从一个问题开始吧。";
+        list.append(empty);
+      }
+      element("history-page").textContent = `第 ${Math.floor(historyOffset / historyLimit) + 1} 页`;
+    }
+
+    function expireLogin() {
+      clearLogin();
+      chatStatus("登录已失效，请重新登录后再选择会话。", true);
+      element("page-feedback").textContent = "登录已失效，请重新登录。";
+    }
+
+    async function loadConversations(offset = 0) {
+      if (isBusy() || !accessToken) return;
+      const token = accessToken;
+      historyBusy = true;
+      updateControls();
+      historyFeedback("正在加载你的会话…");
+      try {
+        const response = await fetch(`/conversations?offset=${offset}&limit=${historyLimit}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        if (accessToken !== token) return;
+        if (response.status === 401) { expireLogin(); return; }
+        if (!response.ok) throw new Error("Conversation list unavailable");
+        const result = await response.json();
+        if (!Array.isArray(result.conversations) || result.offset !== offset || result.limit !== historyLimit ||
+            !result.conversations.every((item) => item && typeof item.conversation_id === "string" && item.conversation_id.length > 0 && item.conversation_id.length <= 100 && Number.isSafeInteger(item.created_at) && item.created_at >= 0)) {
+          throw new Error("Invalid conversation list");
+        }
+        historyItems = result.conversations;
+        historyOffset = offset;
+        renderConversations();
+        historyFeedback(historyItems.length ? "选择一段会话，继续之前的话题。" : historyOffset ? "已到列表末尾，可返回上一页。" : "开始聊天后，会话会保存在这里。");
+      } catch (_) {
+        historyFeedback("暂时无法加载会话，点击“刷新列表”重试。当前聊天保持不变。", true);
+      } finally {
+        historyBusy = false;
+        updateControls();
+      }
+    }
+
+    async function restoreConversation(id) {
+      if (isBusy() || !accessToken) return;
+      const token = accessToken;
+      restoreBusy = true;
+      updateControls();
+      historyFeedback("正在读取这段对话…");
+      try {
+        const response = await fetch(`/conversations/${encodeURIComponent(id)}/messages`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        if (accessToken !== token) return;
+        if (response.status === 401) { expireLogin(); return; }
+        if (response.status === 404) {
+          historyFeedback("该会话不存在或不可访问，请刷新列表或选择其他会话。当前聊天未切换。", true);
+          return;
+        }
+        if (!response.ok) throw new Error("Conversation history unavailable");
+        const result = await response.json();
+        if (result.conversation_id !== id || !Array.isArray(result.messages) ||
+            !result.messages.every((message) => message && ["user", "assistant"].includes(message.role) && typeof message.content === "string")) {
+          throw new Error("Invalid conversation history");
+        }
+        // 验证完整响应后才切换编号和聊天内容，失败不会破坏当前对话。
+        conversationId = id;
+        element("chat-messages").replaceChildren();
+        for (const message of result.messages) addMessage(message.role, message.content);
+        if (!result.messages.length) addMessage("system", "这段会话还没有可显示的消息，可以继续提问。");
+        element("question").value = "";
+        renderConversations();
+        showHistory(false);
+        chatStatus("已恢复这段会话，可以接着聊。");
+      } catch (_) {
+        historyFeedback("历史暂时无法读取，可以稍后重试。当前聊天保持不变。", true);
+      } finally {
+        restoreBusy = false;
+        updateControls();
+        if (element("history-panel").hidden && !element("chat-panel").hidden) element("question").focus();
+      }
+    }
+
     function openChat() {
       element("chat-panel").hidden = false;
       element("assistant-launcher").hidden = true;
       element("assistant-launcher").setAttribute("aria-expanded", "true");
-      if (!chatBusy) element("question").focus();
+      if (!isBusy()) (element("history-panel").hidden ? element("question") : element("history-toggle")).focus();
     }
 
     function openLogin() {
-      if (chatBusy || loginBusy || logoutBusy) return;
+      if (isBusy()) return;
       loginOpener = document.activeElement;
       element("login-feedback").textContent = "";
       element("password").value = "";
@@ -243,6 +385,9 @@
     function clearLogin() {
       accessToken = "";
       currentUsername = "";
+      historyItems = [];
+      historyOffset = 0;
+      historyFeedback("登录后可查看自己的历史会话。");
       element("question").value = "";
       element("password").value = "";
       resetConversation();
@@ -258,15 +403,31 @@
       element("assistant-launcher").focus();
     });
     element("new-chat").addEventListener("click", () => {
-      if (chatBusy || loginBusy || logoutBusy) return;
+      if (isBusy()) return;
       resetConversation();
       element("question").value = "";
       chatStatus("已开始新会话，登录状态保留。");
       element("question").focus();
     });
+    element("history-toggle").addEventListener("click", async () => {
+      if (isBusy()) return;
+      if (!accessToken) { openLogin(); return; }
+      const show = element("history-panel").hidden;
+      showHistory(show);
+      if (show) await loadConversations(0);
+      else element("question").focus();
+    });
+    element("history-refresh").addEventListener("click", () => loadConversations(historyOffset));
+    element("history-prev").addEventListener("click", () => {
+      if (historyOffset > 0) return loadConversations(Math.max(0, historyOffset - historyLimit));
+    });
+    element("history-next").addEventListener("click", () => {
+      if (historyItems.length === historyLimit) return loadConversations(historyOffset + historyLimit);
+    });
     document.addEventListener("click", (event) => {
       const shortcut = event.target.closest("[data-question]");
-      if (!shortcut || shortcut.disabled || chatBusy || loginBusy || logoutBusy) return;
+      if (!shortcut || shortcut.disabled || isBusy()) return;
+      showHistory(false);
       openChat();
       element("question").value = shortcut.dataset.question;
       element("question").focus();
@@ -285,7 +446,7 @@
 
     element("login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (chatBusy || loginBusy || logoutBusy) return;
+      if (isBusy()) return;
       const username = element("username").value.trim();
       const password = element("password").value;
       if (!username || !password) {
@@ -293,6 +454,7 @@
         return;
       }
       loginBusy = true;
+      let loggedIn = false;
       updateControls();
       element("login-feedback").textContent = "正在验证登录…";
       try {
@@ -312,11 +474,14 @@
         if (typeof result.access_token !== "string" || !result.access_token || typeof result.username !== "string") throw new Error("Invalid login response");
         accessToken = result.access_token;
         currentUsername = result.username;
+        historyItems = [];
+        historyOffset = 0;
         resetConversation();
         element("page-feedback").textContent = "";
         element("login-dialog").close();
         openChat();
-        chatStatus("登录成功，可以开始提问了。");
+        chatStatus("登录成功，可以提问或打开“历史会话”继续聊。");
+        loggedIn = true;
       } catch (_) {
         element("login-feedback").textContent = "网络或响应异常，暂时无法登录，请稍后再试。";
       } finally {
@@ -325,10 +490,11 @@
         updateControls();
         if (!element("login-dialog").open && !element("chat-panel").hidden) element("question").focus();
       }
+      if (loggedIn) await loadConversations(0);
     });
 
     element("account-button").addEventListener("click", async () => {
-      if (chatBusy || loginBusy || logoutBusy) return;
+      if (isBusy()) return;
       if (!accessToken) { openLogin(); return; }
       logoutBusy = true;
       updateControls();
@@ -346,7 +512,7 @@
 
     element("chat-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (chatBusy || loginBusy || logoutBusy) return;
+      if (isBusy() || !element("history-panel").hidden) return;
       const question = element("question").value.trim();
       if (!question) { chatStatus("先写下你的问题吧。"); return; }
       if (!accessToken) { openLogin(); return; }
