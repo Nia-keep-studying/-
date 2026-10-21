@@ -12,7 +12,7 @@ from langchain.tools import tool,ToolRuntime
 from langchain_deepseek import ChatDeepSeek
 from langgraph.checkpoint.memory import InMemorySaver
 
-from .context_management import observe_context_tokens
+from .context_management import observe_context_tokens,ConversationState
 from .business_entry import get_return_entry
 from .order_client import get_order,login,is_logged_in,get_order_list,create_human_ticket
 from rag.policy_search import retrieve_policy
@@ -106,6 +106,7 @@ def build_agent(model, policy_chunks, embedding_model, policy_chunk_vectors, pol
         )
 
     return create_agent(
+        state_schema=ConversationState,
         model=model,
         tools=[query_order, search_policy,query_orders,query_return_entry,create_support_ticket],
         checkpointer=checkpointer,
