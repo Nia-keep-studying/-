@@ -180,6 +180,7 @@ class ProjectSmokeTests(unittest.TestCase):
                 output = stack.enter_context(patch("builtins.print"))
                 stack.enter_context(patch.object(agent_app, "getpass", return_value="test-password"))
                 stack.enter_context(patch.object(agent_app, "login", return_value={"access_token": "test-token", "username": "alice"}))
+                stack.enter_context(patch.object(agent_app, "create_conversation", return_value="registered-thread"))
                 for name in ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]:
                     stack.enter_context(patch.object(agent_app, name))
                 fake_agent = Mock()
@@ -244,7 +245,7 @@ class ProjectSmokeTests(unittest.TestCase):
                 stack.enter_context(patch.object(agent_app, "getpass", return_value="test-password"))
                 stack.enter_context(patch.object(agent_app, "login", return_value={"access_token": "private-test-token", "username": "alice"}))
                 stack.enter_context(patch.object(agent_app, "is_logged_in", return_value=True))
-                stack.enter_context(patch.object(agent_app, "uuid4", side_effect=["failed-thread", "fresh-thread"]))
+                stack.enter_context(patch.object(agent_app, "create_conversation", side_effect=["failed-thread", "fresh-thread"]))
                 timer = stack.enter_context(patch.object(agent_app, "perf_counter", side_effect=[10.0, 12.5, 20.0, 23.0]))
                 for name in ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]:
                     stack.enter_context(patch.object(agent_app, name))
@@ -291,6 +292,7 @@ class ProjectSmokeTests(unittest.TestCase):
                 output = stack.enter_context(patch("builtins.print"))
                 password_input = stack.enter_context(patch.object(agent_app, "getpass", side_effect=passwords))
                 login = stack.enter_context(patch.object(agent_app, "login", side_effect=responses))
+                creation = stack.enter_context(patch.object(agent_app, "create_conversation", return_value="registered-thread"))
                 resources = [stack.enter_context(patch.object(agent_app, name)) for name in
                              ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]]
                 fake = Mock()
@@ -299,6 +301,7 @@ class ProjectSmokeTests(unittest.TestCase):
                 self.assertEqual(login.call_count, attempts)
                 self.assertEqual(password_input.call_count, len(passwords))
                 self.assertEqual(build.call_count, initializations)
+                self.assertEqual(creation.call_count, initializations)
                 self.assertTrue(all(resource.call_count == initializations for resource in resources))
                 fake.invoke.assert_not_called()
                 if initializations:

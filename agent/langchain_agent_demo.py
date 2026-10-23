@@ -14,7 +14,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from .context_management import observe_context_tokens,ConversationState
 from .business_entry import get_return_entry
-from .order_client import get_order,login,is_logged_in,get_order_list,create_human_ticket
+from .order_client import get_order,login,is_logged_in,get_order_list,create_human_ticket,create_conversation
 from rag.policy_search import retrieve_policy
 from rag.rag_loader import load_documents, split_documents
 from rag.embedding_demo import load_embedding_model, build_chunk_vectors
@@ -253,8 +253,11 @@ def main():
     print("已登录：",login_result["username"])
 
     agent = initialize_agent()
-
-    config = {"configurable": {"thread_id": str(uuid4())}, "recursion_limit": 10}
+    try:
+        config = {"configurable": {"thread_id": create_conversation(access_token=access_token)}, "recursion_limit": 10}
+    except httpx.HTTPStatusError as exc:
+        print("未能成功创建对话")
+        return
 
     while True:
         question = input("请输入问题（新会话/新对话 / q）：").strip()
@@ -263,7 +266,11 @@ def main():
         if not question:
             continue
         if question in {"新会话", "新对话"}:
-            config["configurable"]["thread_id"] = str(uuid4())
+            try:
+                config["configurable"]["thread_id"] = create_conversation(access_token=access_token)
+            except httpx.HTTPStatusError:
+                print("未能成功创建新对话")
+                continue
             print("已切换到新会话")
             continue
 
@@ -283,7 +290,11 @@ def main():
         except (httpx.HTTPError, APIError) as exc:
             print("本轮请求未能正常完成，异常类型：", type(exc).__name__)
             print("如果涉及工单创建，请先核对保存结果，再决定是否重新提交。")
-            config["configurable"]["thread_id"] = str(uuid4())
+            try:
+                config["configurable"]["thread_id"] = create_conversation(access_token=access_token)
+            except httpx.HTTPStatusError:
+                print("未能恢复对话")
+                break
             print("已切换到新会话，编号：", config["configurable"]["thread_id"])
             continue
 

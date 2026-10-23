@@ -263,6 +263,14 @@ def create_human_ticket(
                 detail="未找到可关联订单",
             )
 
+    conversation_statement = select(ChatConversation).where(ChatConversation.conversation_id == ticket_data.conversation_id)
+    user_conversation = session.exec(conversation_statement).first()
+    if user_conversation is None or user_conversation.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=404,
+            detail="会话id不属于当前用户"
+        )
+
     ticket = HumanTicket(
         ticket_id=str(uuid4()),
         user_id=current_user.user_id,
@@ -440,4 +448,28 @@ def read_conversation_messages(
     return {
         "conversation_id":conversation_id,
         "messages":visible_messages,
+    }
+
+@app.post("/conversations")
+def post_conversation(current_user:User = Depends(get_current_user),session:Session=Depends(get_session)):
+    conversation_id = str(uuid4())
+
+    statement = select(ChatConversation).where(ChatConversation.conversation_id == conversation_id)
+    if_conversation = session.exec(statement).first()
+
+    if if_conversation:
+        raise HTTPException(
+            status_code=403,
+            detail="已经存在此对话id"
+        )
+
+    conversation = ChatConversation(
+        conversation_id=conversation_id,
+        user_id=current_user.user_id,
+        created_at=int(time.time())
+    )
+    session.add(conversation)
+    session.commit()
+    return {
+        "conversation_id":conversation_id
     }

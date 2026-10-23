@@ -109,6 +109,12 @@ def create_human_ticket(
     response.raise_for_status()
     return response.json()
 
+def create_conversation(access_token:str):
+    conversation = httpx.post(f"{ORDER_API_BASE_URL}/conversations",headers={"Authorization":f"Bearer {access_token}"},timeout=5)
+    conversation.raise_for_status()
+    conversation_dict = conversation.json()
+    return conversation_dict["conversation_id"]
+
 if __name__ == "__main__":
     from getpass import getpass
 

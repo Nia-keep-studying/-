@@ -236,7 +236,7 @@ class AuthSessionTests(unittest.TestCase):
             ("POST", "/login"), ("GET", "/me"), ("POST", "/logout"),
             ("GET", "/orders"), ("GET", "/orders/{order_id}"),
             ("POST", "/human-tickets"), ("POST", "/chat"),
-            ("GET", "/conversations"),
+            ("GET", "/conversations"), ("POST", "/conversations"),
             ("GET", "/conversations/{conversation_id}/messages"),
         })
 
@@ -337,7 +337,60 @@ class AuthSessionTests(unittest.TestCase):
         payload.update(changes)
         return payload
 
+    def register_test_conversation(self, conversation_id, user_id="U1001"):
+        with Session(self.engine) as session:
+            session.add(server.ChatConversation(
+                conversation_id=conversation_id, user_id=user_id, created_at=10,
+            ))
+            session.commit()
+
+    def test_create_conversation_registers_authenticated_owner(self):
+        token = self.login()
+        self.assertEqual(self.client.post("/conversations").status_code, 401)
+        self.assertEqual(self.client.post("/conversations", headers=self.headers("invalid")).status_code, 401)
+        with patch.object(server.app.state, "agent", Mock()) as agent:
+            response = self.client.post("/conversations", headers=self.headers(token))
+            self.assertEqual(response.status_code, 200, response.text)
+            conversation_id = response.json()["conversation_id"]
+            agent.invoke.assert_not_called()
+        with Session(self.engine) as session:
+            conversations = session.exec(select(server.ChatConversation)).all()
+            self.assertEqual(len(conversations), 1)
+            self.assertEqual(conversations[0].conversation_id, conversation_id)
+            self.assertEqual(conversations[0].user_id, "U1001")
+
+    def test_ticket_rejects_missing_and_other_users_conversations(self):
+        self.register_test_conversation("bob-private", "U1002")
+        headers = self.headers(self.login())
+        for conversation_id in ("missing", "bob-private"):
+            with self.subTest(conversation_id=conversation_id):
+                response = self.client.post("/human-tickets", headers=headers,
+                    json=self.ticket_payload(conversation_id=conversation_id))
+                self.assertEqual(response.status_code, 404)
+        with Session(self.engine) as session:
+            self.assertEqual(session.exec(select(server.HumanTicket)).all(), [])
+
+    def test_http_conversation_client_parses_success_and_raises_on_error(self):
+        token = self.login()
+
+        def local_post(url, **kwargs):
+            kwargs.pop("timeout", None)
+            result = self.client.post(url, **kwargs)
+            # TestClient may use a separate HTTPX distribution; the adapter uses httpx.
+            return httpx.Response(result.status_code, content=result.content,
+                headers=result.headers, request=httpx.Request("POST", str(result.request.url)))
+
+        with patch.object(order_client.httpx, "post", side_effect=local_post) as post:
+            conversation_id = order_client.create_conversation(token)
+            self.assertTrue(post.call_args.args[0].endswith("/conversations"))
+            self.assertEqual(post.call_args.kwargs["headers"], self.headers(token))
+            with self.assertRaises(httpx.HTTPStatusError):
+                order_client.create_conversation("invalid")
+        with Session(self.engine) as session:
+            self.assertEqual(session.get(server.ChatConversation, conversation_id).user_id, "U1001")
+
     def test_ticket_without_order_is_saved(self):
+        self.register_test_conversation("offline-thread")
         response = self.client.post("/human-tickets", headers=self.headers(self.login()),
                                     json=self.ticket_payload())
         self.assertEqual(response.status_code, 201, response.text)
@@ -348,6 +401,7 @@ class AuthSessionTests(unittest.TestCase):
             self.assertEqual(ticket.status, "待处理")
 
     def test_ticket_uses_authenticated_owner_and_server_status(self):
+        self.register_test_conversation("offline-thread")
         response = self.client.post("/human-tickets", headers=self.headers(self.login()),
             json=self.ticket_payload(order_id="A1001", user_id="U1002", status="已完成",
                                      policy_reference="退款与取消规则 / 发货后退款"))
@@ -401,6 +455,8 @@ class AuthSessionTests(unittest.TestCase):
 
         token = self.login()
         inputs = [("first-thread", None), ("new-thread", "A1001"), ("denied-thread", "A2001")]
+        for thread_id, _ in inputs:
+            self.register_test_conversation(thread_id)
         responses = []
         for number, (_, order_id) in enumerate(inputs):
             args = {"summary": "需要人工确认售后条件", "reason": "用户主动要求人工"}
@@ -498,13 +554,17 @@ class AuthSessionTests(unittest.TestCase):
             stack.enter_context(patch.object(app, "getpass", return_value="test-password"))
             stack.enter_context(patch.object(app, "login", return_value={"access_token": token, "username": "alice"}))
             stack.enter_context(patch.object(app, "is_logged_in", return_value=True))
-            stack.enter_context(patch.object(app, "uuid4", side_effect=["ticket-saved-thread", "recovery-thread"]))
+            stack.enter_context(patch.object(server, "uuid4", side_effect=[
+                "ticket-saved-thread", "offline-ticket-id", "recovery-thread",
+            ]))
             for name in ["load_documents", "split_documents", "load_embedding_model", "build_chunk_vectors", "load_rerank_model", "ChatDeepSeek"]:
                 stack.enter_context(patch.object(app, name))
             stack.enter_context(patch.object(app, "build_agent", return_value=agent))
             post = stack.enter_context(patch.object(order_client.httpx, "post", side_effect=local_post))
             app.main()
-            self.assertEqual(post.call_count, 1)
+            self.assertEqual(post.call_count, 3)
+            self.assertEqual([urlsplit(call.args[0]).path for call in post.call_args_list],
+                             ["/conversations", "/human-tickets", "/conversations"])
             self.assertEqual(len(model_calls), 3)
             output.assert_any_call("本轮请求未能正常完成，异常类型：", "APIConnectionError")
             output.assert_any_call("最终回答：", "新会话恢复后的回答")
@@ -532,6 +592,8 @@ class AuthSessionTests(unittest.TestCase):
             ("alice-new-token", alice_new, "U1001", "A1001", "A1001", False),
             ("revoked-token", alice_old, "U1001", "A1001", "A1001", True),
         ]
+        for thread_id, _, user_id, *_ in cases:
+            self.register_test_conversation(thread_id, user_id)
         registered, responses, model_messages = [], [], []
         for index, (_, _, _, order_id, detail_id, _) in enumerate(cases):
             calls = [

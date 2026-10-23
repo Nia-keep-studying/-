@@ -118,14 +118,17 @@ def observe_context_tokens(request:ModelRequest,handler):
     state_update = None
 
     if estimate_tokens > SUMMARY_TRIGGER_TOKENS and new_older_messages:
+
         summary = generate_summary(
             request.model,
             summary,
             new_older_messages,
         )
+        print(f"本次整理了 {len(new_older_messages)} 条消息")
 
         #新摘要已经覆盖当前全部较早消息
         covered_count = len(older_messages)
+        print(f"更新后累计覆盖了 {covered_count} 条信息")
 
         state_update = {
             "conversation_summary":summary,
