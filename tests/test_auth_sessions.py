@@ -333,7 +333,8 @@ class AuthSessionTests(unittest.TestCase):
 
     def ticket_payload(self, **changes):
         payload = {"summary": "订单售后条件无法确认", "reason": "用户要求人工",
-                   "conversation_id": "offline-thread"}
+                   "conversation_id": "offline-thread",
+                   "idempotency_key": "offline-ticket-operation"}
         payload.update(changes)
         return payload
 
@@ -413,7 +414,8 @@ class AuthSessionTests(unittest.TestCase):
             self.assertEqual(ticket.conversation_id, "offline-thread")
             self.assertEqual(ticket.summary, "订单售后条件无法确认")
             self.assertGreater(ticket.created_at, 0)
-        self.assertIn("尚无真实客服接入", response.json()["message"])
+        self.assertIn("待处理", response.json()["message"])
+        self.assertNotIn("已接听", response.json()["message"])
 
     def test_ticket_rejection_never_inserts_a_record(self):
         headers = self.headers(self.login())
@@ -583,6 +585,16 @@ class AuthSessionTests(unittest.TestCase):
         from agent.langchain_agent_demo import AgentContext, build_agent
         from tests.test_project_smoke import ToolCallingModel, FakeEmbedding, FakeReranker
 
+        # The return-entry tool now requires a valid receipt within seven days.
+        # Keep these fixtures local to this identity check; other tests use shipped orders.
+        with Session(self.engine) as session:
+            for order_id in ("A1001", "A2001"):
+                order = session.get(server.Order, order_id)
+                order.status = "已签收"
+                order.received_at = int(server.time.time()) - 2 * 24 * 60 * 60
+                session.add(order)
+            session.commit()
+
         alice_old = self.login("alice")
         bob = self.login("bob")
         alice_new = self.login("alice")
@@ -709,6 +721,13 @@ class AuthSessionTests(unittest.TestCase):
                 order_client.is_logged_in("test-token")
 
     def test_return_entry_preparation_checks_owner_status_and_preserves_auth_error(self):
+        with Session(self.engine) as session:
+            order = session.get(server.Order, "A1001")
+            order.status = "已签收"
+            order.received_at = int(server.time.time()) - 2 * 24 * 60 * 60
+            session.add(order)
+            session.commit()
+
         def local_get(url, **kwargs):
             kwargs.pop("timeout", None)
             return self.client.get(url, **kwargs)
@@ -718,6 +737,7 @@ class AuthSessionTests(unittest.TestCase):
             entry = get_return_entry("A1001", token)
             self.assertEqual(entry["order_id"], "A1001")
             self.assertTrue(entry["is_demo"])
+            self.assertIn("北京时间", entry["received_at_display"])
             parsed = urlsplit(entry["entry_url"])
             base = urlsplit(RETURN_APPLICATION_URL)
             self.assertEqual((parsed.scheme, parsed.netloc, parsed.path), (base.scheme, base.netloc, base.path))

@@ -1,9 +1,26 @@
 """HTTP adapter for the local customer-support API."""
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 
 import httpx
 
 from settings import ORDER_API_BASE_URL
+
+
+def _with_received_time_display(order: dict) -> dict:
+    """Keep the numeric receipt time for checks and add a deterministic display value."""
+    received_at = order.get("received_at")
+    display = None
+    if received_at is not None:
+        try:
+            received_time = datetime.fromtimestamp(
+                received_at, tz=timezone(timedelta(hours=8))
+            )
+            display = received_time.strftime("%Y-%m-%d %H:%M:%S") + "（北京时间）"
+        except (OverflowError, OSError, ValueError, TypeError):
+            # Formatting must not hide an order whose receipt time needs investigation.
+            display = None
+    return {**order, "received_at_display": display}
 
 
 def get_order(order_id: str,access_token:str) -> dict:
@@ -22,7 +39,7 @@ def get_order(order_id: str,access_token:str) -> dict:
         return {"error": "订单不存在", "order_id": order_id}
 
     response.raise_for_status()
-    return response.json()
+    return _with_received_time_display(response.json())
 
 def get_order_list(access_token:str,status:str|None=None,product:str|None=None,product_keyword:str|None=None,offset:int=0,limit:int=10)->list[dict]|dict:
     params = {"offset":offset,"limit":limit}
@@ -50,7 +67,10 @@ def get_order_list(access_token:str,status:str|None=None,product:str|None=None,p
         }
 
     response.raise_for_status()
-    return response.json()
+    orders = response.json()
+    if isinstance(orders, list):
+        return [_with_received_time_display(order) for order in orders]
+    return orders
 
 def login(username:str,password:str)->dict:
     response = httpx.post(
@@ -84,10 +104,11 @@ def create_human_ticket(
     summary:str,
     reason:str,
     conversation_id:str,
+    idempotency_key:str,
     order_id:str|None = None,
     policy_reference:str|None = None,
 ) -> dict:
-    json = {"summary":summary,"reason":reason,"conversation_id":conversation_id}
+    json = {"summary":summary,"reason":reason,"conversation_id":conversation_id,"idempotency_key":idempotency_key}
     if order_id is not None:
         json["order_id"]=order_id
     if policy_reference is not None:

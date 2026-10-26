@@ -8,6 +8,9 @@ from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from uuid import uuid4
 from langgraph.checkpoint.postgres import PostgresSaver
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.exc import IntegrityError
+from psycopg.errors import UniqueViolation
 
 import secrets
 import hashlib
@@ -17,7 +20,7 @@ import time
 password_hasher = PasswordHash.recommended()
 bearer_scheme = HTTPBearer(auto_error=False)
 
-OrderStatus = Literal["已发货","待发货","已取消"]
+OrderStatus = Literal["已发货","待发货","已取消","已签收"]
 
 class User(SQLModel,table=True):
     __tablename__="users"
@@ -45,17 +48,30 @@ class Order(SQLModel,table=True):
     user_id:str=Field(foreign_key="users.user_id",index=True)
     product:str
     status:str
+    received_at:int|None = None
 
 class HumanTicket(SQLModel,table=True):
     __tablename__ = "human_tickets"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name = "uq_human_tickets_user_idempotency_key",
+        ),
+    )
 
     ticket_id:str=Field(primary_key=True)
     user_id:str=Field(foreign_key="users.user_id",index=True)
+    idempotency_key:str|None = Field(
+        default=None,
+        max_length=100,
+    )
     order_id:str|None = Field(
         default=None,
         foreign_key="orders.order_id",
         index=True,
     )
+
 
     summary:str
     reason:str
@@ -73,6 +89,10 @@ class HumanTicketCreate(SQLModel):
         max_length=2000,
     )
     conversation_id:str=Field(min_length=1,max_length=100)
+    idempotency_key:str = Field(
+        min_length=1,
+        max_length=100,
+    )
 
 class ChatConversation(SQLModel,table=True):
     __tablename__ = "chat_conversations"
@@ -244,6 +264,42 @@ def return_application_page():
         headers={"Cache-Control":"no-store"}
     )
 
+def find_existing_ticket_result(
+        session:Session,
+        user_id:str,
+        ticket_data:HumanTicketCreate,
+) -> dict|None:
+    statement = select(HumanTicket).where(
+        HumanTicket.user_id == user_id,
+        HumanTicket.idempotency_key == ticket_data.idempotency_key,
+    )
+    existing_ticket = session.exec(statement).first()
+
+    if existing_ticket is None:
+        return None
+
+    same_request = (
+        existing_ticket.order_id == ticket_data.order_id
+        and existing_ticket.summary == ticket_data.summary
+        and existing_ticket.reason == ticket_data.reason
+        and existing_ticket.policy_reference == ticket_data.policy_reference
+        and existing_ticket.conversation_id == ticket_data.conversation_id
+    )
+
+    if not same_request:
+        raise HTTPException(
+            status_code=409,
+            detail="该幂等编号已用于其他请求，请核对内容",
+        )
+
+    return {
+        "ticket_id":existing_ticket.ticket_id,
+        "order_id":existing_ticket.order_id,
+        "summary":existing_ticket.summary,
+        "status":existing_ticket.status,
+        "message":"工单已保存，状态为待处理。"
+    }
+
 @app.post("/human-tickets",status_code=201)
 def create_human_ticket(
     ticket_data:HumanTicketCreate,
@@ -271,9 +327,15 @@ def create_human_ticket(
             detail="会话id不属于当前用户"
         )
 
+    existing_result = find_existing_ticket_result(session=session,user_id=current_user.user_id,ticket_data=ticket_data,)
+
+    if existing_result is not None:
+        return existing_result
+
     ticket = HumanTicket(
         ticket_id=str(uuid4()),
         user_id=current_user.user_id,
+        idempotency_key=ticket_data.idempotency_key,
         order_id=ticket_data.order_id,
         summary=ticket_data.summary,
         reason=ticket_data.reason,
@@ -283,8 +345,32 @@ def create_human_ticket(
         status="待处理"
     )
 
-    session.add(ticket)
-    session.commit()
+    ticket_user_id = current_user.user_id
+
+    try:
+        session.add(ticket)
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+
+        #不是唯一性冲突，继续抛出原错误
+        if not isinstance(exc.orig,UniqueViolation):
+            raise
+
+        #不是我们指定的"用户 + K"约束，也不能当做重复请求
+        if(exc.orig.diag.constraint_name != "uq_human_tickets_user_idempotency_key"):
+            raise
+
+        existing_result = find_existing_ticket_result(
+            session=session,
+            user_id=ticket_user_id,
+            ticket_data=ticket_data,
+        )
+
+        if existing_result is None:
+            raise
+
+        return existing_result
     session.refresh(ticket)
 
     return {
@@ -292,8 +378,9 @@ def create_human_ticket(
         "order_id":ticket.order_id,
         "summary":ticket.summary,
         "status":ticket.status,
-        "message":"工单已保存，状态为待处理。当前为演示流程，尚无真实客服接入。"
+        "message":"工单已保存，状态为待处理。"
     }
+
 
 @app.post("/chat")
 def chat(

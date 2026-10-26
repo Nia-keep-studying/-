@@ -60,14 +60,28 @@ class ProjectSmokeTests(unittest.TestCase):
             )
             try:
                 with patch.object(server, "engine", engine), patch.object(seed_demo, "engine", engine):
-                    seed_demo.seed_demo()
-                    seed_demo.seed_demo()
+                    fixed_now = 1_800_000_000
+                    with patch.object(seed_demo.time, "time", return_value=fixed_now):
+                        seed_demo.seed_demo()
+                    # Running again a day later must not move existing receipt times.
+                    with patch.object(seed_demo.time, "time", return_value=fixed_now + 86400):
+                        seed_demo.seed_demo()
                     with Session(engine) as session:
                         self.assertEqual(len(session.exec(select(server.User)).all()), 2)
                         orders = session.exec(select(server.Order)).all()
                         self.assertEqual({o.order_id: o.user_id for o in orders}, {
-                            "A1001": "U1001", "A1002": "U1001", "A2001": "U1002",
+                            "A1001": "U1001", "A1002": "U1001", "A1003": "U1001",
+                            "A1004": "U1001", "A1005": "U1001", "A1006": "U1001",
+                            "A1007": "U1001", "A2001": "U1002", "A2002": "U1002",
+                            "A2003": "U1002",
                         })
+                        by_id = {order.order_id: order for order in orders}
+                        self.assertEqual(by_id["A1001"].received_at, fixed_now - 2 * 86400)
+                        self.assertEqual(by_id["A1002"].received_at, fixed_now - 10 * 86400)
+                        self.assertEqual(by_id["A1001"].status, "已签收")
+                        self.assertEqual(by_id["A1002"].status, "已签收")
+                        self.assertEqual({order.status for order in orders}, {"已签收", "待发货", "已发货", "已取消"})
+                        self.assertTrue(all(order.received_at is None for order in orders if order.status != "已签收"))
                         user = session.get(server.User, "U1001")
                         self.assertTrue(server.password_hasher.verify("demo-password", user.password_hash))
             finally:
@@ -80,6 +94,25 @@ class ProjectSmokeTests(unittest.TestCase):
         with patch("agent.order_client.httpx.get", return_value=httpx.Response(503, request=request)):
             with self.assertRaises(httpx.HTTPStatusError):
                 get_order("A1001", "test-token")
+
+    def test_order_adapter_formats_receipt_time_without_changing_timestamp(self):
+        from agent import order_client
+
+        original = {"order_id": "A1002", "status": "已签收", "received_at": 1792114730}
+        expected = "2026-10-16 09:38:50（北京时间）"
+        request = httpx.Request("GET", "http://example.test/orders/A1002")
+        for payload, load in [
+            (original, lambda: order_client.get_order("A1002", "test-token")),
+            ([original], lambda: order_client.get_order_list("test-token")),
+        ]:
+            with patch.object(order_client.httpx, "get", return_value=httpx.Response(200, json=payload, request=request)):
+                result = load()
+            order = result[0] if isinstance(result, list) else result
+            self.assertEqual(order["received_at"], 1792114730)
+            self.assertEqual(order["received_at_display"], expected)
+        self.assertNotIn("received_at_display", original)
+        self.assertIsNone(order_client._with_received_time_display({"received_at": None})["received_at_display"])
+        self.assertIsNone(order_client._with_received_time_display({"received_at": 10**30})["received_at_display"])
 
     def test_documents_and_rag_pipeline_preserve_chunk_identity(self):
         documents = load_documents()

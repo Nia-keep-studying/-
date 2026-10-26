@@ -58,11 +58,12 @@
       <dt>订单编号</dt><dd id="order-id"></dd>
       <dt>商品</dt><dd id="order-product"></dd>
       <dt>当前状态</dt><dd id="order-status"></dd>
+      <dt>签收时间</dt><dd id="order-received-at"></dd>
     </dl>
   </section>
   <section id="instructions" hidden>
     <h2>办理说明</h2>
-    <p>已发货状态不代表退款已获批准。是否签收、申请期限及其他售后条件仍需确认，具体处理以适用制度和业务系统审核为准。</p>
+    <p>本演示入口展示已签收、签收时间有效且距签收不超过连续七个二十四小时的订单。符合这些展示条件不代表退款已获批准，商品类型、完好情况及其他售后条件仍需按适用制度审核。</p>
     <p>当前演示仅展示入口和本人订单。这里没有提交按钮，也没有创建退货、退款或资金记录。</p>
   </section>
 </main>
@@ -70,6 +71,12 @@
   "use strict";
   const orderId = new URLSearchParams(window.location.search).get("order_id");
   const element = (id) => document.getElementById(id);
+  const receivedTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  });
   let accessToken = "";
 
   function feedback(text, error = false) {
@@ -80,7 +87,7 @@
   function clearOrder() {
     element("order-section").hidden = true;
     element("instructions").hidden = true;
-    for (const id of ["order-id", "order-product", "order-status"]) {
+    for (const id of ["order-id", "order-product", "order-status", "order-received-at"]) {
       element(id).textContent = "";
     }
   }
@@ -128,13 +135,39 @@
     element("order-id").textContent = order.order_id;
     element("order-product").textContent = order.product;
     element("order-status").textContent = order.status;
+    const receivedAt = order.received_at;
+    const receivedDate = Number.isSafeInteger(receivedAt) ? new Date(receivedAt * 1000) : null;
+    const validReceivedTime = receivedDate !== null && Number.isFinite(receivedDate.getTime());
+    element("order-received-at").textContent = receivedAt == null
+      ? "暂无签收记录"
+      : validReceivedTime
+        ? `${receivedTimeFormatter.format(receivedDate)}（北京时间）`
+        : "签收时间异常";
     element("order-section").hidden = false;
-    if (order.status !== "已发货") {
-      feedback("当前演示入口暂只支持已发货订单，请按对应状态的制度处理。", true);
+    // These checks control display only; entry generation is checked by the Python tool.
+    if (order.status !== "已签收") {
+      feedback("当前演示入口暂只支持已签收订单，请按对应状态的制度处理。", true);
+      return;
+    }
+    if (receivedAt == null) {
+      feedback("缺少签收时间，暂时无法确认是否符合七天期限。", true);
+      return;
+    }
+    if (!validReceivedTime) {
+      feedback("签收时间异常，请进一步核实订单信息。", true);
+      return;
+    }
+    const elapsedSeconds = Math.floor(Date.now() / 1000) - receivedAt;
+    if (elapsedSeconds < 0) {
+      feedback("签收时间在未来，请进一步核实订单信息。", true);
+      return;
+    }
+    if (elapsedSeconds > 7 * 24 * 60 * 60) {
+      feedback("距签收已超过七天，不符合本演示入口的时间条件，其他售后请按制度进一步核实。", true);
       return;
     }
     element("instructions").hidden = false;
-    feedback("已查询到本人订单。本页尚未提交任何申请。");
+    feedback("订单状态与签收时间符合本演示页面的展示条件。本页尚未提交任何申请。");
   }
 
   element("login-form").addEventListener("submit", async (event) => {
