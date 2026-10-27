@@ -390,6 +390,21 @@ class AuthSessionTests(unittest.TestCase):
         with Session(self.engine) as session:
             self.assertEqual(session.get(server.ChatConversation, conversation_id).user_id, "U1001")
 
+    def test_ticket_client_returns_conflict_without_retrying(self):
+        conflict = httpx.Response(409,
+            json={"detail": "该幂等编号已用于其他请求，请核对内容"},
+            request=httpx.Request("POST", "http://offline/human-tickets"))
+        with patch.object(order_client.httpx, "post", return_value=conflict) as post:
+            result = order_client.create_human_ticket(
+                access_token="offline-token", summary="需要人工确认", reason="用户要求人工",
+                conversation_id="offline-thread", idempotency_key="same-operation",
+            )
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result.get("error"))
+        self.assertNotIn("ticket_id", result)
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.kwargs["json"]["idempotency_key"], "same-operation")
+
     def test_ticket_without_order_is_saved(self):
         self.register_test_conversation("offline-thread")
         response = self.client.post("/human-tickets", headers=self.headers(self.login()),

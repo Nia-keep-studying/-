@@ -126,7 +126,8 @@ def create_human_ticket(
         return {"code":"unauthenticated","error":"身份验证失败，请重新登录"}
     if response.status_code == 404:
         return {"error":"无法关联对应订单"}
-
+    if response.status_code == 409:
+        return {"error":"该编号已绑定其他工单，该操作编号对应的请求内容不一致，请核对原请求或已有工单。"}
     response.raise_for_status()
     return response.json()
 
